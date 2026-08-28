@@ -1,0 +1,23 @@
+internal-docs/
+
+# Go
+/bin/
+*.test
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# ML artifacts (versioned via object storage, not git)
+mlruns/
+mlartifacts/
+
+# Local configuration
+.env
+
+# OS / editor
+.DS_Store
