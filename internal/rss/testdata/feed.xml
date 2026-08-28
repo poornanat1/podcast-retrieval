@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>Practical AI Weekly</title>
+    <description>Hands-on conversations about applied machine learning.</description>
+    <language>en-US</language>
+    <link>https://example.com/practical-ai</link>
+    <itunes:author>Example Media</itunes:author>
+    <itunes:explicit>no</itunes:explicit>
+    <itunes:image href="https://example.com/art.jpg"/>
+    <itunes:category text="Technology">
+      <itunes:category text="Machine Learning"/>
+    </itunes:category>
+    <category>Science</category>
+    <item>
+      <title>Episode 3: Retrieval in production</title>
+      <description>Two-tower models beyond the paper.</description>
+      <guid isPermaLink="false">ep-3-guid</guid>
+      <link>https://example.com/ep3</link>
+      <pubDate>Mon, 17 Aug 2026 09:30:00 +0000</pubDate>
+      <enclosure url="https://cdn.example.com/ep3.mp3" length="1" type="audio/mpeg"/>
+      <itunes:duration>1:02:33</itunes:duration>
+      <itunes:explicit>no</itunes:explicit>
+    </item>
+    <item>
+      <title>Episode 2: Evaluating rankers</title>
+      <description>NDCG, MAP, and what they miss.</description>
+      <guid isPermaLink="false">ep-2-guid</guid>
+      <pubDate>Mon, 10 Aug 2026 09:30:00 +0000</pubDate>
+      <enclosure url="https://cdn.example.com/ep2.mp3" length="1" type="audio/mpeg"/>
+      <itunes:duration>45:10</itunes:duration>
+      <itunes:explicit>yes</itunes:explicit>
+    </item>
+    <item>
+      <title>Episode 1: Why podcasts are hard to search</title>
+      <description>The cold-start problem in audio.</description>
+      <pubDate>Mon, 3 Aug 2026 09:30:00 +0000</pubDate>
+      <enclosure url="https://cdn.example.com/ep1.mp3" length="1" type="audio/mpeg"/>
+      <itunes:duration>2100</itunes:duration>
+    </item>
+  </channel>
+</rss>
