@@ -1,0 +1,87 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: podfind
+      POSTGRES_PASSWORD: podfind
+      POSTGRES_DB: podfind
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/compose/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U podfind -d podfind"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: podfind
+      MINIO_ROOT_PASSWORD: podfind-dev-secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Creates the buckets the project expects, then exits.
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 podfind podfind-dev-secret &&
+      mc mb --ignore-existing local/datasets local/transcripts local/models local/mlflow-artifacts
+      "
+
+  catalog-worker:
+    build:
+      context: .
+      args:
+        CMD: catalog-worker
+    environment:
+      DATABASE_URL: postgres://podfind:podfind@postgres:5432/podfind?sslmode=disable
+      # Set in .env (gitignored); discovery jobs dead-letter without it.
+      PARTICLE_API_KEY: ${PARTICLE_API_KEY:-}
+      PODFIND_DAILY_TRENDING: ${PODFIND_DAILY_TRENDING:-25}
+      PODFIND_WORKER_CONCURRENCY: ${PODFIND_WORKER_CONCURRENCY:-4}
+      OBJECT_STORE_ENDPOINT: minio:9000
+      OBJECT_STORE_ACCESS_KEY: podfind
+      OBJECT_STORE_SECRET_KEY: podfind-dev-secret
+      OBJECT_STORE_BUCKET: transcripts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.8.1
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts
+    ports:
+      # Host 5001: macOS AirPlay Receiver (ControlCenter) occupies port 5000.
+      - "5001:5000"
+    volumes:
+      - mlflow-data:/mlflow
+
+volumes:
+  pgdata:
+  minio-data:
+  mlflow-data:
