@@ -1,0 +1,33 @@
+[project]
+name = "podfind-ml"
+version = "0.0.0"
+description = "PodFind ML: datasets, training, evaluation, and model export"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.6,<3",
+    "mlflow>=3.1,<4",
+    "pandera>=0.22,<1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<9",
+    "ruff>=0.9,<1",
+]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["ml*", "pipelines*"]
+
+[tool.pytest.ini_options]
+testpaths = ["ml/tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
