@@ -1,0 +1,17 @@
+{
+  "name": "search-retrieval-bootstrap",
+  "base_version": "1.0.0",
+  "generator": "synthetic_query",
+  "seed": 20260826,
+  "language_prefix": "en",
+  "max_examples": 50000,
+  "negatives_per_example": 4,
+  "label_strength": 0.3,
+  "validation_start": "2026-06-01T00:00:00+00:00",
+  "test_start": "2026-07-15T00:00:00+00:00",
+  "validation": {
+    "min_examples": 1000,
+    "min_distinct_positives": 500,
+    "min_negatives_per_example": 1
+  }
+}

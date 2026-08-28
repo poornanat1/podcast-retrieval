@@ -8,6 +8,8 @@ dependencies = [
     "mlflow>=3.1,<4",
     "pandera>=0.22,<1",
     "pyarrow>=17,<23",
+    "psycopg[binary]>=3.2,<4",
+    "minio>=7.2,<8",
 ]
 
 [dependency-groups]

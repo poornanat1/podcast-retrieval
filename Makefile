@@ -2,7 +2,7 @@ GO ?= go
 UV ?= uv
 DATABASE_URL ?= postgres://podfind:podfind@localhost:5432/podfind?sslmode=disable
 
-.PHONY: all build test lint ci python-env migrate dataset reproduce
+.PHONY: all build test lint ci python-env migrate snapshot dataset reproduce
 
 all: build
 
@@ -26,8 +26,14 @@ lint:
 
 ci: python-env lint test build
 
+CONFIG ?= experiments/datasets/search-bootstrap-v1.json
+SNAPSHOT ?= data/snapshots
+
+snapshot:
+	$(UV) run python -m ml.datasets.snapshot --out data/snapshots
+
 dataset:
-	@echo "make dataset: not implemented yet" && exit 1
+	$(UV) run python -m ml.datasets.build --config $(CONFIG) --snapshot $(SNAPSHOT) --out data/datasets
 
 reproduce:
 	@echo "make reproduce: not implemented yet" && exit 1
