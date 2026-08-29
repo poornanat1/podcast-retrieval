@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from ml.relevance.contracts import JudgmentModel, QueryModel
+from ml.relevance.contracts import JudgmentModel, QueryModel, is_human_judge
 
 
 def load_jsonl(path: Path) -> pd.DataFrame:
@@ -44,19 +44,31 @@ def main(argv: list[str] | None = None) -> int:
     if unknown:
         raise SystemExit(f"judgments reference unknown queries: {sorted(unknown)[:5]}")
 
-    ordered = judgments.sort_values(["query_id", "episode_id"])
+    # One grade per (query, episode): a human judgment overrides an LLM one.
+    judgments = judgments.assign(_human=is_human_judge(judgments["judge"]))
+    effective = (
+        judgments.sort_values("_human")
+        .drop_duplicates(subset=["query_id", "episode_id"], keep="last")
+        .drop(columns=["_human"])
+    )
+
+    ordered = effective.sort_values(["query_id", "episode_id"])
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w") as f:
         for row in ordered.itertuples():
             f.write(f"{row.query_id} 0 {row.episode_id} {row.grade}\n")
 
-    merged = judgments.merge(queries[["query_id", "query_type"]], on="query_id")
+    merged = effective.merge(queries[["query_id", "query_type"]], on="query_id")
+    human = is_human_judge(effective["judge"])
     summary = {
-        "judgments": len(judgments),
-        "judged_queries": int(judgments["query_id"].nunique()),
+        "judgments": len(effective),
+        "human_judgments": int(human.sum()),
+        "llm_judgments": int((~human).sum()),
+        "human_overrides": len(judgments) - len(effective),
+        "judged_queries": int(effective["query_id"].nunique()),
         "total_queries": len(queries),
-        "relevant_share": round(float((judgments["grade"] >= 2).mean()), 3),
+        "relevant_share": round(float((effective["grade"] >= 2).mean()), 3),
         "by_query_type": {
             t: {"queries": int(g["query_id"].nunique()), "judgments": len(g)}
             for t, g in merged.groupby("query_type")

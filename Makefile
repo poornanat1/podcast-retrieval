@@ -44,6 +44,9 @@ relevance-pool:
 relevance-review:
 	$(UV) run python -m ml.relevance.review
 
+relevance-judge:
+	$(UV) run python -m ml.relevance.llm_judge
+
 relevance-export:
 	$(UV) run python -m ml.relevance.export
 

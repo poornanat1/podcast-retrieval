@@ -50,6 +50,14 @@ class JudgmentModel(pa.DataFrameModel):
     class Config:
         strict = True
 
-    @pa.dataframe_check(name="one_judgment_per_query_episode_pair")
+    @pa.dataframe_check(name="one_judgment_per_pair_and_judge")
     def _unique_pairs(cls, df: pd.DataFrame) -> bool:
-        return not df.duplicated(subset=["query_id", "episode_id"]).any()
+        # A human may re-grade a pair an LLM judged (human wins at export),
+        # but the same judge grading the same pair twice is an error.
+        return not df.duplicated(subset=["query_id", "episode_id", "judge"]).any()
+
+
+def is_human_judge(judge: pd.Series) -> pd.Series:
+    """Machine judges are namespaced ``llm:<model>``; everything else is a
+    person."""
+    return ~judge.str.startswith("llm:")

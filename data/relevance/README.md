@@ -38,7 +38,23 @@ as is standard for pooled evaluation.
 | 2 | relevant — satisfies the query |
 | 3 | highly relevant — near-perfect answer |
 
-Grade the episode against the query's *intent*, including its structured
-constraints. Judgments are append-only, one per (query, episode) pair, and
-carry the judge's name and timestamp. Only human judgments enter
-`qrels.txt`; nothing here is machine-labeled.
+Grade the episode against the query's *intent*. Structured constraints were
+already applied during pooling, so grade topical intent only. Judgments are
+append-only and carry the judge's name and timestamp.
+
+## Judges: human and LLM
+
+Judgments come from two kinds of judge, always distinguishable:
+
+- **Human** (`judge` = a person's name) — collected via `make relevance-review`.
+- **LLM** (`judge` = `llm:<model>`) — collected via `make relevance-judge`,
+  which grades the pooled candidates with the rubric above. Machine
+  judgments are never recorded as human.
+
+At export, one grade per (query, episode) pair applies, and a human judgment
+always overrides an LLM one — so auditing is cheap: re-grade any pair in
+`make relevance-review` and your grade wins. The export summary reports the
+human/LLM composition so downstream reports can state exactly how much of
+the ground truth is machine-labeled. Spot-auditing a random sample of LLM
+judgments (and recording the agreement rate) is strongly recommended before
+trusting evaluation deltas smaller than the observed disagreement.
