@@ -23,3 +23,6 @@ data/datasets/
 
 # OS / editor
 .DS_Store
+
+# Relevance pooling output (machine-local; queries and judgments are tracked)
+data/relevance/tasks.jsonl

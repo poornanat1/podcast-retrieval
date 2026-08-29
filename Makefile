@@ -2,7 +2,7 @@ GO ?= go
 UV ?= uv
 DATABASE_URL ?= postgres://podfind:podfind@localhost:5432/podfind?sslmode=disable
 
-.PHONY: all build test lint ci python-env migrate snapshot dataset reproduce
+.PHONY: all build test lint ci python-env migrate snapshot dataset relevance-queries relevance-pool relevance-review relevance-export reproduce
 
 all: build
 
@@ -34,6 +34,18 @@ snapshot:
 
 dataset:
 	$(UV) run python -m ml.datasets.build --config $(CONFIG) --snapshot $(SNAPSHOT) --out data/datasets
+
+relevance-queries:
+	$(UV) run python -m ml.relevance.queries --snapshot $(SNAPSHOT)
+
+relevance-pool:
+	$(UV) run python -m ml.relevance.pool
+
+relevance-review:
+	$(UV) run python -m ml.relevance.review
+
+relevance-export:
+	$(UV) run python -m ml.relevance.export
 
 reproduce:
 	@echo "make reproduce: not implemented yet" && exit 1
