@@ -20,8 +20,13 @@
 \if :{?published_after} \else \set published_after '' \endif
 \if :{?no_explicit} \else \set no_explicit false \endif
 
+-- Parse the query with a language-appropriate config (stemming must match
+-- how the indexed text was stemmed); default to English when no language
+-- filter is given. The language filter below stays independent.
 WITH q AS (
-    SELECT websearch_to_tsquery(podfind_ts_config(:'lang'), :'query') AS tsq
+    SELECT websearch_to_tsquery(
+        podfind_ts_config(CASE WHEN :'lang' = '' THEN 'en' ELSE :'lang' END),
+        :'query') AS tsq
 ),
 cand AS (
     SELECT e.id FROM episodes e, q WHERE e.search_tsv @@ q.tsq
