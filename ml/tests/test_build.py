@@ -5,7 +5,7 @@ import json
 import pandas as pd
 import pytest
 
-from ml.datasets.build import BuildConfig, build_dataset, normalize_query
+from ml.datasets.build import BuildConfig, GeneratorSpec, build_dataset, normalize_query
 from ml.datasets.validate import ValidationConfig, load_examples, validate_examples
 
 
@@ -29,6 +29,19 @@ def write_snapshot(tmp_path, n_episodes: int = 60):
         }
     )
     episodes.to_parquet(root / "episodes.parquet", index=False)
+    podcasts = pd.DataFrame(
+        {
+            "id": range(1, 6),
+            "title": [f"Show {i}" for i in range(1, 6)],
+            "publisher": ["Pub"] * 5,
+            "language": ["en"] * 5,
+            # Podcasts 1-3 share "History"; 4-5 are "Technology".
+            "categories": [["History"], ["History"], ["History", "Society"],
+                           ["Technology"], ["Technology"]],
+            "explicit": [False] * 5,
+        }
+    )
+    podcasts.to_parquet(root / "podcasts.parquet", index=False)
     (root / "manifest.json").write_text(
         json.dumps({"snapshot_id": "snaptest12345", "rows": {"episodes": n_episodes}})
     )
@@ -39,12 +52,13 @@ def make_config(**overrides) -> BuildConfig:
     base = dict(
         name="test-dataset",
         base_version="1.0.0",
-        generator="synthetic_query",
         seed=42,
         validation_start="2026-03-01T00:00:00+00:00",
         test_start="2026-04-01T00:00:00+00:00",
-        language_prefix="en",
-        max_examples=1000,
+        generators=(
+            GeneratorSpec(type="synthetic_query", language_prefix="en",
+                          max_examples=1000, label_strength=0.3),
+        ),
         negatives_per_example=3,
         validation={"min_examples": 1, "min_distinct_positives": 1},
     )
@@ -120,18 +134,69 @@ def test_language_filter_and_negatives(tmp_path) -> None:
         assert len(set(negatives)) == 3
 
 
+def test_topic_similarity_generates_weak_positives(tmp_path) -> None:
+    snap = write_snapshot(tmp_path)
+    config = make_config(generators=(
+        GeneratorSpec(type="topic_similarity", language_prefix="en",
+                      max_examples=200, max_per_category=100, label_strength=0.2),
+    ))
+    out, manifest = build_dataset(config, snap, tmp_path / "out")
+    frames = [pd.read_parquet(out / f"{s}.parquet") for s in ("train", "validation", "test")]
+    df = pd.concat(frames, ignore_index=True)
+
+    assert (df["label_source"] == "topic_similarity").all()
+    assert manifest["label_class_shares"]["weak"] == 1.0
+    assert set(df["query_text"]) <= {"history", "society", "technology"}
+
+    # Weak positives are actually in-category; negatives are out-of-category.
+    # History = podcasts 1-3; episode ids i have podcast_id 1 + (i-1) % 5.
+    history_podcasts = {1, 2, 3}
+    for row in df.itertuples():
+        podcast_of = lambda e: 1 + (e - 1) % 5  # noqa: E731 - mirrors fixture layout
+        in_query_category = {
+            "history": history_podcasts, "society": {3}, "technology": {4, 5}
+        }[row.query_text]
+        assert podcast_of(int(row.positive_episode_id)) in in_query_category
+        for negative in row.negative_episode_ids:
+            assert podcast_of(int(negative)) not in in_query_category
+
+
+def test_mixed_generators_report_class_shares(tmp_path) -> None:
+    snap = write_snapshot(tmp_path)
+    config = make_config(generators=(
+        GeneratorSpec(type="synthetic_query", language_prefix="en", max_examples=30),
+        GeneratorSpec(type="topic_similarity", language_prefix="en",
+                      max_examples=30, max_per_category=20),
+    ))
+    _, manifest = build_dataset(config, snap, tmp_path / "out")
+    shares = manifest["label_class_shares"]
+    assert shares["synthetic"] > 0 and shares["weak"] > 0
+    assert shares["real"] == 0.0 and shares["human"] == 0.0
+    assert round(shares["synthetic"] + shares["weak"], 4) == 1.0
+
+    # Mixed builds stay deterministic.
+    _, again = build_dataset(config, snap, tmp_path / "out2")
+    assert again["dataset_version"] == manifest["dataset_version"]
+
+
 def test_invalid_split_order_rejected(tmp_path) -> None:
     config_path = tmp_path / "config.json"
     bad = {
         "name": "x",
         "base_version": "1.0.0",
-        "generator": "synthetic_query",
         "seed": 1,
         "validation_start": "2026-05-01T00:00:00+00:00",
         "test_start": "2026-04-01T00:00:00+00:00",
+        "generators": [{"type": "synthetic_query"}],
     }
     config_path.write_text(json.dumps(bad))
     with pytest.raises(ValueError, match="validation_start"):
+        BuildConfig.load(config_path)
+
+    del bad["generators"]
+    bad["validation_start"] = "2026-03-01T00:00:00+00:00"
+    config_path.write_text(json.dumps(bad))
+    with pytest.raises(ValueError, match="generator"):
         BuildConfig.load(config_path)
 
 
