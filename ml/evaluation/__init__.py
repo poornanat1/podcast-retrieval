@@ -1,1 +1,1 @@
-"""PodFind ML scaffold."""
+"""Offline retrieval evaluation: metrics, harness, and config-driven runs."""

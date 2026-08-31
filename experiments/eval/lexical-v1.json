@@ -1,0 +1,8 @@
+{
+  "system": "lexical-fts",
+  "ks": [10, 50, 100],
+  "min_relevant_grade": 2,
+  "relevance_dir": "data/relevance",
+  "head_podcast_share": 0.1,
+  "mlflow_experiment": "retrieval-eval"
+}
