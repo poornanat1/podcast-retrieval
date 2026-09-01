@@ -38,8 +38,10 @@ dataset:
 relevance-queries:
 	$(UV) run python -m ml.relevance.queries --snapshot $(SNAPSHOT)
 
+POOL_SYSTEMS ?= lexical-fts,popularity-global,popularity-category
+
 relevance-pool:
-	$(UV) run python -m ml.relevance.pool
+	$(UV) run python -m ml.relevance.pool --systems $(POOL_SYSTEMS)
 
 relevance-review:
 	$(UV) run python -m ml.relevance.review
@@ -54,6 +56,9 @@ EVAL_CONFIG ?= experiments/eval/lexical-v1.json
 
 eval:
 	$(UV) run python -m ml.evaluation.run --config $(EVAL_CONFIG)
+
+eval-all:
+	$(UV) run python -m ml.evaluation.compare experiments/eval/*.json
 
 reproduce:
 	@echo "make reproduce: not implemented yet" && exit 1
