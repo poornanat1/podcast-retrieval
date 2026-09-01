@@ -15,6 +15,7 @@ type Podcast struct {
 	ArtworkURL  string
 	Language    string
 	Categories  []string
+	Popularity  float64 // global popularity percentile in [0, 1]; 0 if unknown
 }
 
 // Provider finds podcasts by query or popularity.

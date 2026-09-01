@@ -144,7 +144,7 @@ func TestRecurringDiscoveryIngestsAndReenqueues(t *testing.T) {
 		if r.URL.Path != "/v1/podcasts" || r.URL.Query().Get("sort") != "popularity" {
 			t.Errorf("unexpected request: %s %s", r.URL.Path, r.URL.RawQuery)
 		}
-		fmt.Fprintf(w, `{"data":[{"id":"pt7","title":"Practical AI Weekly","url":%q,"language":"en","topics":[{"name":"Technology"}]}],"has_more":false}`,
+		fmt.Fprintf(w, `{"data":[{"id":"pt7","title":"Practical AI Weekly","url":%q,"language":"en","popularity":0.91,"topics":[{"name":"Technology"}]}],"has_more":false}`,
 			feedServer.URL)
 	}))
 	defer providerServer.Close()
@@ -183,15 +183,16 @@ func TestRecurringDiscoveryIngestsAndReenqueues(t *testing.T) {
 		return countEpisodes(t, pool, podcastID) == 3
 	})
 
-	// Provider attribution is recorded.
+	// Provider attribution and popularity are recorded.
 	var source, discoveryID string
+	var popularity float64
 	if err := pool.QueryRow(ctx,
-		"SELECT discovery_source, discovery_id FROM podcasts WHERE id = $1", podcastID,
-	).Scan(&source, &discoveryID); err != nil {
+		"SELECT discovery_source, discovery_id, popularity FROM podcasts WHERE id = $1", podcastID,
+	).Scan(&source, &discoveryID, &popularity); err != nil {
 		t.Fatalf("read discovery attribution: %v", err)
 	}
-	if source != "particle" || discoveryID != "pt7" {
-		t.Fatalf("attribution = (%q, %q), want (particle, pt7)", source, discoveryID)
+	if source != "particle" || discoveryID != "pt7" || popularity != 0.91 {
+		t.Fatalf("attribution = (%q, %q, %v), want (particle, pt7, 0.91)", source, discoveryID, popularity)
 	}
 
 	// Tomorrow's tick is pending roughly a day out.

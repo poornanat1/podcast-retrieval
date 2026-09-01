@@ -62,7 +62,7 @@ func TestSearchAuthenticatesAndMaps(t *testing.T) {
 	if p.ID != "1a2b3c" || p.FeedURL != "https://changelog.com/practicalai/feed" {
 		t.Errorf("podcast = %+v", p)
 	}
-	if p.Publisher != "Changelog Media" || p.Language != "en" {
+	if p.Publisher != "Changelog Media" || p.Language != "en" || p.Popularity != 0.97 {
 		t.Errorf("podcast = %+v", p)
 	}
 	if len(p.Categories) != 2 || p.Categories[0] != "Technology" {

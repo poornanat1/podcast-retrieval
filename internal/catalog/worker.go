@@ -258,21 +258,28 @@ func (w *Worker) registerPodcast(ctx context.Context, pod discovery.Podcast) (in
 		pod.Categories = []string{}
 	}
 
+	// Re-discovering a known feed refreshes its provider popularity but is
+	// otherwise a no-op; only genuinely new feeds get an initial refresh.
 	var id int64
+	var inserted bool
 	err = w.Pool.QueryRow(ctx, `
 		INSERT INTO podcasts (feed_url, discovery_source, discovery_id, title,
-		                      description, publisher, artwork_url, language, categories)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		ON CONFLICT (feed_url) DO NOTHING
-		RETURNING id`,
+		                      description, publisher, artwork_url, language,
+		                      categories, popularity)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		ON CONFLICT (feed_url) DO UPDATE
+		SET popularity = GREATEST(podcasts.popularity, EXCLUDED.popularity),
+		    updated_at = now()
+		RETURNING id, (xmax = 0) AS inserted`,
 		canonical, w.Discovery.Source(), pod.ID, pod.Title, pod.Description,
 		pod.Publisher, pod.ArtworkURL, normalizeLanguage(pod.Language), pod.Categories,
-	).Scan(&id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, nil // feed already known
-	}
+		pod.Popularity,
+	).Scan(&id, &inserted)
 	if err != nil {
 		return 0, err
+	}
+	if !inserted {
+		return 0, nil // feed already known; popularity refreshed
 	}
 
 	_, err = w.Queue.Enqueue(ctx, JobFeedRefresh, FeedRefreshPayload{PodcastID: id},

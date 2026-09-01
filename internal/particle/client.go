@@ -172,6 +172,7 @@ func (c *Client) list(ctx context.Context, path string, query url.Values) ([]dis
 			Publisher:   p.Publisher.Name,
 			ArtworkURL:  p.ImageURL,
 			Language:    p.Language,
+			Popularity:  p.Popularity,
 		}
 		for _, t := range p.Topics {
 			if t.Name != "" {
