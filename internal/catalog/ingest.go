@@ -142,12 +142,7 @@ func IngestFeed(ctx context.Context, db Querier, podcastID int64, feed *rss.Feed
 		var err error
 		switch {
 		case item.GUID != "":
-			id, outcome, err = upsertByGUID(ctx, db, podcastID, item, language, hash)
-			// A changed GUID on a known enclosure collides with the
-			// enclosure key; trust the enclosure identity instead.
-			if isUniqueViolation(err, "episodes_enclosure_key") && item.EnclosureURL != "" {
-				id, outcome, err = upsertByEnclosure(ctx, db, podcastID, item, language, hash)
-			}
+			id, outcome, err = upsertByGUIDWithFallback(ctx, db, podcastID, item, language, hash)
 		case item.EnclosureURL != "":
 			id, outcome, err = upsertByEnclosure(ctx, db, podcastID, item, language, hash)
 		default:
@@ -213,6 +208,36 @@ func scanOutcome(row pgx.Row) (int64, string, error) {
 		return id, "inserted", nil
 	}
 	return id, "updated", nil
+}
+
+// beginner is satisfied by *pgxpool.Pool (starts a transaction) and pgx.Tx
+// (creates a savepoint), so the fallback below works in both contexts.
+type beginner interface {
+	Begin(ctx context.Context) (pgx.Tx, error)
+}
+
+// upsertByGUIDWithFallback tries the GUID identity first. A changed GUID on
+// a known enclosure collides with the enclosure key; that failed statement
+// would abort an enclosing transaction, so it runs inside a savepoint that
+// is rolled back before trusting the enclosure identity instead.
+func upsertByGUIDWithFallback(ctx context.Context, db Querier, podcastID int64, item rss.Item, language, hash string) (int64, string, error) {
+	b, ok := db.(beginner)
+	if !ok {
+		return upsertByGUID(ctx, db, podcastID, item, language, hash)
+	}
+	nested, err := b.Begin(ctx)
+	if err != nil {
+		return 0, "", fmt.Errorf("begin savepoint: %w", err)
+	}
+	id, outcome, err := upsertByGUID(ctx, nested, podcastID, item, language, hash)
+	if err == nil {
+		return id, outcome, nested.Commit(ctx)
+	}
+	nested.Rollback(ctx)
+	if isUniqueViolation(err, "episodes_enclosure_key") && item.EnclosureURL != "" {
+		return upsertByEnclosure(ctx, db, podcastID, item, language, hash)
+	}
+	return 0, "", err
 }
 
 func upsertByGUID(ctx context.Context, db Querier, podcastID int64, item rss.Item, language, hash string) (int64, string, error) {

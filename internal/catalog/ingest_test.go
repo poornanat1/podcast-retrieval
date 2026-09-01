@@ -162,6 +162,49 @@ func TestDedupFallsBackToEnclosureAndHash(t *testing.T) {
 	}
 }
 
+// The GUID→enclosure fallback must survive inside the ingestion
+// transaction: a failed statement aborts a Postgres transaction unless it
+// ran in a savepoint.
+func TestGUIDAdoptionInsideTransaction(t *testing.T) {
+	pool := pgtest.Pool(t, "catalog")
+	ctx := context.Background()
+	id := insertPodcast(t, pool, "https://example.com/feed.xml")
+
+	when := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	base := rss.Item{
+		Title:        "Adopted episode",
+		Description:  "d",
+		EnclosureURL: "https://cdn.example.com/adopted.mp3",
+		PublishedAt:  &when,
+	}
+	if _, _, err := catalog.IngestFeed(ctx, pool, id, &rss.Feed{Language: "en", Items: []rss.Item{base}}); err != nil {
+		t.Fatalf("initial ingest: %v", err)
+	}
+
+	withGUID := base
+	withGUID.GUID = "late-guid"
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer tx.Rollback(ctx)
+	stats, _, err := catalog.IngestFeed(ctx, tx, id, &rss.Feed{Language: "en", Items: []rss.Item{withGUID}})
+	if err != nil {
+		t.Fatalf("ingest inside transaction: %v", err)
+	}
+	// The transaction is still usable after the fallback.
+	var n int
+	if err := tx.QueryRow(ctx, "SELECT count(*) FROM episodes WHERE podcast_id = $1", id).Scan(&n); err != nil {
+		t.Fatalf("transaction unusable after fallback: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if stats.NewEpisodes != 0 || n != 1 {
+		t.Fatalf("stats=%+v count=%d, want adoption without duplicate", stats, n)
+	}
+}
+
 func TestCanonicalFeedURL(t *testing.T) {
 	cases := map[string]string{
 		"HTTPS://Example.COM:443/Feed.xml":  "https://example.com/Feed.xml",
