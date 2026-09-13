@@ -10,21 +10,42 @@ Embeddings convert text (queries, episodes, transcripts) into dense vectors for 
 |--------|-------|
 | **Model** | intfloat/multilingual-e5-small |
 | **Dimension** | 384 |
-| **Parameters** | 33M |
-| **Inference time** | ~5-10ms CPU, ~2-3ms GPU |
-| **Strength** | Fast, accurate, multilingual, lightweight |
+| **Parameters** | ~118M (12-layer multilingual encoder) |
+| **Inference** | milliseconds per query on CPU; ~300 episodes/s batched on Apple GPU |
+| **Prefixes** | `query: ...` / `passage: ...` (required by the E5 family) |
 | **Use case** | Real-time query embedding, batch episode embedding |
 
-**Design choice**: Optimized for speed (production requirement) without sacrificing accuracy.
+### Why this model
+
+1. **The catalog is multilingual.** ~77% English with real German, Spanish,
+   French, and Portuguese segments — an English-only encoder (all-MiniLM,
+   bge-small-en) would silently degrade a fifth of the catalog and every
+   language-filtered query. E5's multilingual training also gives
+   cross-lingual matching for free.
+2. **It is retrieval-trained, not just a sentence encoder.** E5 models are
+   contrastively trained for asymmetric query→passage retrieval with
+   explicit role prefixes; paraphrase-style encoders consistently
+   underperform them on retrieval benchmarks at the same size.
+3. **384 dimensions keeps pgvector comfortable.** ~800k vectors ≈ 1.2 GB of
+   float32 plus an HNSW index that fits in memory alongside the rest of the
+   database — double the dimensions roughly doubles both.
+4. **Small enough for both sides of the tower.** The same model embeds
+   queries at request time (CPU, milliseconds) and the full catalog in
+   under an hour on a laptop GPU, so index rebuilds are routine rather than
+   an event.
+5. **Self-hosted by design.** No per-call API cost, no catalog text leaving
+   the stack, and deterministic versioned artifacts — consistent with the
+   project's reproducibility rules.
 
 ### Alternative Models
 
-| Model | Dim | Speed | Quality | Best for |
-|-------|-----|-------|---------|----------|
-| e5-base-v2 | 768 | Slower | Better | If latency budget allows |
-| BGE-small | 384 | Fast | Good | Multilingual alternative |
+| Model | Dim | Trade-off vs. current |
+|-------|-----|-----------------------|
+| multilingual-e5-base / large | 768 / 1024 | Better quality; 2-4x embed cost and index size — the fine-tuned two-tower must beat the *small* model first |
+| all-MiniLM-L6-v2, bge-small-en | 384 | Faster/comparable, but English-only |
+| Hosted embedding APIs | varies | Quality without ops, but per-call cost, latency, and catalog text egress |
 
-**Evaluation strategy**: Start with e5-small; evaluate e5-base if Recall@10 < 0.65.
+**Evaluation strategy**: Start with multilingual-e5-small; evaluate e5-base if pretrained Recall@10 plateaus below the lexical baseline.
 
 ### Fine-Tuning Strategy (Future)
 

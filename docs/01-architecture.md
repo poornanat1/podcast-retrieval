@@ -4,63 +4,26 @@ PodFind is a distributed system split between Python (ML and data) and Go (inges
 
 ## System Overview
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Query → User                              │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-        ┌──────────────┴──────────────┐
-        │                             │
-    ┌───▼─────────┐           ┌──────▼──────┐
-    │   API/Web   │           │  Voice      │
-    │   (Go)      │           │  Capture    │
-    │   REST/gRPC │           │  (Go)       │
-    └───┬─────────┘           └──────┬──────┘
-        │                            │
-        │  Parse intent,filters      │
-        │                            │
-        └─────────────┬──────────────┘
-                      │
-        ┌─────────────▼──────────────┐
-        │    Retrieval Layer         │
-        │  ┌──────────────────────┐  │
-        │  │ Hybrid Retrieval     │  │
-        │  │ (Lexical+Vector+RRF) │  │
-        │  └──────────────────────┘  │
-        └─────────────┬──────────────┘
-                      │
-        ┌─────────────▼──────────────────────────────┐
-        │         PostgreSQL + pgvector              │
-        │  ┌──────────────────────────────────────┐  │
-        │  │ Episodes (text, embeddings, features)│  │
-        │  │ Shows (metadata, stats)              │  │
-        │  │ Transcripts (text, timestamps)       │  │
-        │  │ Feed Index (lexical FTS)             │  │
-        │  │ Vector Index (pgvector)              │  │
-        │  └──────────────────────────────────────┘  │
-        └──────────────┬───────────────────────────┘
-                       │
-        ┌──────────────┼──────────────┬──────────────┐
-        │              │              │              │
-    ┌───▼────┐    ┌───▼────┐    ┌───▼────┐    ┌───▼────┐
-    │  Catalog│    │  Embed │    │  Train │    │  Eval  │
-    │ Worker  │    │ Worker │    │ (ML)   │    │ (ML)   │
-    │  (Go)   │    │  (Go)  │    │        │    │        │
-    └────┬────┘    └────┬───┘    └───┬────┘    └───┬────┘
-         │              │            │             │
-    ┌────▼──────┐   ┌───▼────┐  ┌───▼────────┐    │
-    │ RSS Polling│   │ Vector │  │ Embedding  │    │
-    │            │   │ Store  │  │ Models     │    │
-    │ Publisher  │   │ (MinIO)│  │ (HF Hub)   │    │
-    │ Feeds      │   │        │  │            │    │
-    └────────────┘   └────────┘  └────────────┘    │
-                                                    │
-                                    ┌───────────────▼──────┐
-                                    │     MLflow           │
-                                    │  - Experiments       │
-                                    │  - Runs & Metrics    │
-                                    │  - Model Registry    │
-                                    └──────────────────────┘
+```mermaid
+flowchart TB
+    U["User query<br/>(text today; voice planned)"] --> API["API / Web (Go)<br/>parse intent + structured filters"]
+    API --> RET["Retrieval layer<br/>hybrid: lexical + vector + RRF"]
+    RET --> PG[("PostgreSQL + pgvector<br/>podcasts · episodes · transcripts<br/>FTS indexes · episode_embeddings (HNSW)<br/>jobs · outbox · events")]
+
+    CW["Catalog worker (Go)<br/>discovery · RSS polling · transcripts"] --> PG
+    EMB["Embedding job (Python)<br/>multilingual-e5-small"] --> PG
+    TRAIN["Training (Python)<br/>datasets · fine-tuning"] --> MLF["MLflow<br/>experiments · metrics · registry"]
+    EVAL["Evaluation (Python)<br/>harness + baselines"] --> MLF
+    PG --> TRAIN
+    PG --> EVAL
+
+    FEEDS["Publisher RSS feeds<br/>(via Particle discovery)"] --> CW
+    HF["Model hub<br/>(pretrained encoders)"] --> EMB
+    MINIO[("MinIO<br/>datasets · raw transcripts · models")] <--> TRAIN
+
+    style PG fill:#e1f5ff
+    style MLF fill:#fce4ec
+    style MINIO fill:#f3e5f5
 ```
 
 ## Component Layers
@@ -89,10 +52,10 @@ PodFind is a distributed system split between Python (ML and data) and Go (inges
 
 **Responsible:** Generating and maintaining vector search indexes
 
-- **Embedding worker (Go):** Orchestrates embedding generation
-  - Calls embedding inference (sentence-transformers)
-  - Batches episodes for efficient processing
-  - Stores vectors in PostgreSQL pgvector
+- **Embedding job (Python today; Go orchestration planned):**
+  - Runs sentence-transformers inference in batches (resumable; re-embeds
+    on content change via content hashes)
+  - Stores vectors in PostgreSQL pgvector, keyed by (episode, model)
 
 - **Embedding models (ML):** Fine-tuned or pretrained embedding models
   - Current: `intfloat/multilingual-e5-small` (384-dim)
@@ -105,7 +68,7 @@ PodFind is a distributed system split between Python (ML and data) and Go (inges
 
 - **Hybrid retrieval:** Combines three strategies
   - **Lexical:** BM25 via PostgreSQL full-text search (FTS)
-  - **Vector:** L2 distance search over pgvector embeddings
+  - **Vector:** cosine-distance ANN search over pgvector embeddings
   - **RRF (Reciprocal Rank Fusion):** Merges lexical + vector rankings
 
 - **Filtering & ranking:** 
@@ -177,40 +140,41 @@ PodFind is a distributed system split between Python (ML and data) and Go (inges
 
 ### Ingestion Pipeline
 
-```
-RSS Feeds → Catalog Worker → PostgreSQL (Episodes + Shows)
-                                  ↓
-                         Transcript Parser → PostgreSQL (Transcripts)
-                                  ↓
-                         Embedding Worker → pgvector Index
+```mermaid
+flowchart LR
+    A["Publisher<br/>RSS feeds"] --> B["Catalog worker<br/>(Go)"]
+    B --> C[("Episodes + Shows")]
+    B --> D["Transcript parser"]
+    D --> E[("Transcripts")]
+    C -->|"content_changed<br/>outbox events"| F["Embedding job<br/>(Python)"]
+    E -->|"content_changed<br/>outbox events"| F
+    F --> G[("episode_embeddings<br/>HNSW index")]
 ```
 
 ### Training Pipeline
 
-```
-PostgreSQL Snapshot → Dataset Builder → Relevance Pool → Review/Judge
-                              ↓
-                         Versioned Dataset (Parquet)
-                              ↓
-                         Model Training (fine-tuning)
-                              ↓
-                         MLflow (metrics logged)
-                              ↓
-                         Model Export
+```mermaid
+flowchart LR
+    A[("PostgreSQL")] -->|"make snapshot"| B["Snapshot<br/>(Parquet)"]
+    B -->|"make dataset"| C["Versioned dataset<br/>(Parquet + manifest)"]
+    A -->|"make relevance-pool"| D["Relevance pool"]
+    D -->|"LLM judge +<br/>human override"| E["qrels"]
+    C --> F["Model training<br/>(fine-tuning)"]
+    E --> G["Evaluation harness"]
+    F --> G
+    G --> H["MLflow<br/>metrics + registry"]
+    F -->|"export"| H
 ```
 
 ### Serving Pipeline
 
-```
-User Query → Query Parser (filters + intent)
-                ↓
-         Hybrid Retrieval (lexical + vector)
-                ↓
-         Ranking/Filtering
-                ↓
-         API Response
-                ↓
-        Event Capture (interactions) → PostgreSQL (logs)
+```mermaid
+flowchart LR
+    A["User query"] --> B["Query parser<br/>intent + filters"]
+    B --> C["Hybrid retrieval<br/>lexical + vector"]
+    C --> D["Ranking / filtering"]
+    D --> E["API response"]
+    E --> F[("Interaction events<br/>PostgreSQL")]
 ```
 
 ## Key Design Decisions
@@ -241,34 +205,12 @@ User Query → Query Parser (filters + intent)
 
 ## Dependencies & Data Flow Diagram
 
-```
-┌────────────────────────────────────────────┐
-│         API/Query Interface (Go)           │
-└────────────────────────────────────────────┘
-              ↓              ↑
-    ┌─────────▼─────────────┴──────────┐
-    │   Retrieval (lexical+vector+RRF) │
-    └─────────┬───────────────────────┘
-              │
-    ┌─────────▼───────────────────────────┐
-    │    PostgreSQL + pgvector            │
-    │  (episodes, shows, transcripts,     │
-    │   embeddings, FTS indices)          │
-    └──────────────────────────────────────┘
-              ↓              ↑
-    ┌─────────▼──────────────┴────────┐
-    │   Background Workers (Go)        │
-    │  - Catalog updater              │
-    │  - Embedding orchestrator       │
-    └─────────┬──────────────────────┘
-              │
-    ┌─────────▼──────────────────────┐
-    │   Data Pipeline (Python)        │
-    │  - Dataset building            │
-    │  - Embedding models            │
-    │  - Training & evaluation       │
-    │  - MLflow                      │
-    └────────────────────────────────┘
+```mermaid
+flowchart TB
+    API["API / query interface (Go)"] <--> RET["Retrieval<br/>lexical + vector + RRF"]
+    RET <--> PG[("PostgreSQL + pgvector<br/>episodes · shows · transcripts<br/>embeddings · FTS indexes")]
+    PG <--> WORK["Background workers (Go)<br/>catalog updater · job queue · outbox"]
+    PG <--> ML["Data pipeline (Python)<br/>datasets · embeddings ·<br/>training · evaluation · MLflow"]
 ```
 
 ## Scalability Notes
