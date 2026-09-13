@@ -12,6 +12,10 @@ sources:
    categories, publishers, languages, durations, and publication dates,
    ingested from publisher RSS feeds discovered via the Particle data
    platform. Audio is never downloaded; only enclosure URLs are stored.
+   **Corpus freeze:** feed polling and discovery were stopped on
+   2026-09-13 with the catalog at 1,788 podcasts and 795,533 episodes, so
+   every retrieval system is evaluated against the same fixed corpus.
+   Judgments and metrics dated after 2026-09-13 assume this frozen state.
 2. **Publisher transcripts** — plain-text/SRT/VTT/JSON transcripts linked
    from feeds (~11% episode coverage at the current catalog size).
 3. **Interaction events** — not yet collected; the schema exists and label

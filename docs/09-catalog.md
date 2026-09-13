@@ -35,6 +35,12 @@ docker compose run --rm catalog-worker -oneshot -discover "machine learning"
 
 **Goal:** Periodically fetch new episodes from subscribed feeds.
 
+> **Corpus freeze (since 2026-09-13):** the catalog worker is intentionally
+> stopped (`docker compose stop catalog-worker`) to hold the evaluation
+> corpus fixed at 795,533 episodes while baselines are compared. Resume
+> ingestion with `docker compose start catalog-worker`; re-freeze the same
+> way, and record the new date and episode count here and in the data card.
+
 ### Adaptive Polling Schedule
 
 Don't poll all feeds equally; prioritize active shows:
