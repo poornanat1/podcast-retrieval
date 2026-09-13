@@ -109,7 +109,7 @@ p99 = np.percentile(latencies, 99)  # 99% of queries are faster
       "name": "vector-e5-small",
       "type": "vector",
       "config": {
-        "model": "sentence-transformers/e5-small-v2",
+        "model": "intfloat/multilingual-e5-small",
         "dimension": 384
       }
     },

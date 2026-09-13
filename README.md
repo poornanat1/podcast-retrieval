@@ -43,8 +43,8 @@ versioned model serving with offline evaluation, monitoring, and rollback —
 Python owns the ML lifecycle, Go owns ingestion and serving, PostgreSQL
 (with `pgvector`) owns the data.
 
-**Working today:** a self-maintaining catalog (~1,300 shows, ~540k
-episodes, ~48k transcripts) with adaptive feed polling and daily discovery;
+**Working today:** a self-maintaining catalog (~1,800 shows, ~800k
+episodes, ~87k transcripts) with adaptive feed polling and daily discovery;
 weighted multilingual full-text search with hard structured filters; a
 graded relevance set with an evaluation harness (Recall@K, MRR, NDCG,
 coverage, latency) logging to MLflow; and a deterministic dataset pipeline

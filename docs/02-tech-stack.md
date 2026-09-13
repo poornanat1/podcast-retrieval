@@ -54,7 +54,7 @@
 - **Serialization**: torch.save() for checkpoints; ONNX for cross-platform serving
 
 ### sentence-transformers 3.x
-- **Models**: e5-small-v2 (384-dim); evaluate larger models (e5-base-v2, BGE) for quality
+- **Models**: multilingual-e5-small (384-dim); evaluate larger models (e5-base-v2, BGE) for quality
 - **Pretrained weights**: Cached locally or via HuggingFace Hub
 - **Inference**: Batch processing via workers; GPU optional
 - **Licensing**: Apache 2.0 / MIT; compatible with ecosystem

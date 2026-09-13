@@ -4,11 +4,11 @@ Embeddings convert text (queries, episodes, transcripts) into dense vectors for 
 
 ## Embedding Model Selection
 
-### Current Standard: e5-small-v2
+### Current Standard: multilingual-e5-small
 
 | Aspect | Value |
 |--------|-------|
-| **Model** | sentence-transformers/e5-small-v2 |
+| **Model** | intfloat/multilingual-e5-small |
 | **Dimension** | 384 |
 | **Parameters** | 33M |
 | **Inference time** | ~5-10ms CPU, ~2-3ms GPU |
@@ -39,15 +39,15 @@ If pretrained model doesn't meet quality targets:
 
 Generate vectors for all episodes once, store in pgvector.
 
-**Performance:**
-- CPU: ~10k episodes/hour
-- GPU: ~100k episodes/hour  
-- Full catalog (540k): ~5 hours on GPU
+**Performance (measured, multilingual-e5-small):**
+- Apple GPU (MPS): ~1M episodes/hour (~300/s)
+- CPU: roughly an order of magnitude slower
+- Full catalog (~800k): under an hour on Apple GPU
 
 **Workflow:**
 ```
-Load snapshot → Batch embed → Normalize → Store in pgvector
-  (540k episodes)  (32-item batches)   (cosine)  (with model version)
+Read live catalog → Batch embed → Normalize → Store in pgvector
+  (~800k episodes)   (64-item batches)  (cosine)  (keyed by episode + model)
 ```
 
 ### Online Embedding (Queries)
@@ -63,10 +63,11 @@ Embed each query in real-time with caching.
 
 ### Schema
 
-Stored in `episodes.embedding` column (vector(384)):
-- 384 dimensions from e5-small-v2
-- Indexed with HNSW or IVFFlat
-- Normalized for cosine similarity
+Stored in the `episode_embeddings` table (`vector(384)`), keyed by
+`(episode_id, model)` with the episode's content hash at embed time:
+- 384 dimensions from multilingual-e5-small
+- Partial HNSW index per model, created by the embed job
+- Normalized for cosine similarity; re-embedding triggers on content change
 
 ### Distance Functions
 
@@ -91,7 +92,7 @@ Stored in `episodes.embedding` column (vector(384)):
 ### Build Parameters
 
 - **HNSW**: m=16, ef_construction=64 (standard values)
-- **IVFFlat**: lists=sqrt(n_rows) (100 for 540k episodes)
+- **IVFFlat**: lists=sqrt(n_rows) (~900 for 800k episodes)
 
 ## Recomputing Embeddings
 
@@ -99,10 +100,10 @@ Stored in `episodes.embedding` column (vector(384)):
 
 ```mermaid
 graph LR
-    A["Current<br/>e5-small-v2"] -->|"Add new column"| B["Dual<br/>e5-base-v2"]
+    A["Current<br/>multilingual-e5-small"] -->|"Add new column"| B["Dual<br/>e5-base-v2"]
     B -->|"Evaluate<br/>Recall@10"| C{Better?}
     C -->|"Yes"| D["Migrate"<br/>to new model]
-    C -->|"No"| E["Keep<br/>e5-small-v2"]
+    C -->|"No"| E["Keep<br/>multilingual-e5-small"]
     D -->|"Reindex"| F["Production"]
     E -->|"Cleanup"| F
 

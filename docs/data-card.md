@@ -13,7 +13,7 @@ sources:
    ingested from publisher RSS feeds discovered via the Particle data
    platform. Audio is never downloaded; only enclosure URLs are stored.
 2. **Publisher transcripts** — plain-text/SRT/VTT/JSON transcripts linked
-   from feeds (~9% episode coverage at the current catalog size).
+   from feeds (~11% episode coverage at the current catalog size).
 3. **Interaction events** — not yet collected; the schema exists and label
    sources for real interactions are reserved in the taxonomy below.
 
@@ -35,8 +35,9 @@ expected pre-launch and reported honestly in every manifest.
 
 ## Evaluation ground truth
 
-The relevance set (`data/relevance/`) contains ~180 queries and ~3.4k graded
-judgments over pooled lexical candidates. Judgments are currently
+The relevance set (`data/relevance/`) contains 180 queries and ~8.9k graded
+judgments over candidates pooled from every retrieval system under
+comparison. Judgments are currently
 LLM-generated (`judge: llm:<model>`), each with a rationale; human review
 via the grading CLI overrides LLM grades at export. The eval set is **never
 used for training** — its only role is measurement.
@@ -45,7 +46,7 @@ used for training** — its only role is measurement.
 
 - **Popularity skew:** the catalog was seeded from trending charts plus
   topical searches, over-representing head shows.
-- **Language skew:** ~69% English; es/fr/de/pt at ~100 podcasts each.
+- **Language skew:** ~77% English; es/fr/de/pt at ~100 podcasts each.
 - **Transcript skew:** transcript-bearing episodes concentrate in large,
   professionally produced shows (~17% of podcasts).
 - **Synthetic query gap:** title-derived queries are cleaner and more

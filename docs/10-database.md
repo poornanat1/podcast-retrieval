@@ -91,16 +91,19 @@ Podcast show metadata with RSS feed tracking.
 Individual podcast episodes with searchable content.
 
 **Key columns:**
-- `guid`: RSS unique identifier (for deduplication)
-- `transcript`: Full-text transcript (if available)
-- `tsv`: Tsvector for PostgreSQL full-text search (auto-maintained trigger)
-- `embedding`: 384-dim vector from e5-small-v2 model
+- `rss_guid`: RSS unique identifier (dedup, with enclosure URL and content hash as fallbacks)
+- `content_hash`: fingerprint of searchable fields; drives re-embedding on change
+- `search_tsv`: generated tsvector for PostgreSQL full-text search
 - `published_at`: Publication timestamp (not creation time)
 
+Transcripts live in the `transcripts` table (one row per episode, with its
+own `search_tsv`); embeddings live in `episode_embeddings` keyed by
+`(episode_id, model)` — 384-dim vectors from multilingual-e5-small.
+
 **Indices:**
-- `GIN(tsv)` for full-text search
-- `HNSW(embedding)` for vector similarity search
-- `(show_id, published_at DESC)` for feed chronology
+- `GIN(search_tsv)` for full-text search (episodes, transcripts, podcasts)
+- Partial `HNSW` per model on `episode_embeddings` for vector similarity
+- `(podcast_id, rss_guid)` and `(podcast_id, enclosure_url)` unique keys for dedup
 - `(published_at DESC)` for recent episodes
 
 ### Relevance Judgments
@@ -293,7 +296,7 @@ SELECT datname, count(*) FROM pg_stat_activity GROUP BY datname;
 
 - **Pro**: Simpler operations, lower cost, single backup
 - **Con**: Vector search slower than specialized DBs at massive scale (>10M vectors)
-- **Decision**: For ~540k episodes, PostgreSQL is sufficient
+- **Decision**: For ~800k episodes, PostgreSQL is sufficient
 
 ## Future Enhancements
 

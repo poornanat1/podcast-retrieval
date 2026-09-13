@@ -95,7 +95,7 @@ PodFind is a distributed system split between Python (ML and data) and Go (inges
   - Stores vectors in PostgreSQL pgvector
 
 - **Embedding models (ML):** Fine-tuned or pretrained embedding models
-  - Current: `sentence-transformers/e5-small-v2` (384-dim)
+  - Current: `intfloat/multilingual-e5-small` (384-dim)
   - Evaluate: larger models (e5-base, BGE) for quality
   - Versioned in experiments for reproducibility
 
@@ -225,7 +225,7 @@ User Query → Query Parser (filters + intent)
 
 - Operational simplicity: single database to manage, backup, scale
 - No separate vector DB (Pinecone, Weaviate) reduces complexity
-- Trade-off: vector search less optimized than specialized engines, but sufficient for catalog scale (~540k episodes)
+- Trade-off: vector search less optimized than specialized engines, but sufficient for catalog scale (~800k episodes)
 
 ### Versioned Datasets & Snapshots
 
@@ -273,7 +273,7 @@ User Query → Query Parser (filters + intent)
 
 ## Scalability Notes
 
-- **Catalog scale:** ~1,300 shows, ~540k episodes fits comfortably in PostgreSQL
+- **Catalog scale:** ~1,800 shows, ~800k episodes fits comfortably in PostgreSQL
 - **Vector index:** pgvector with HNSW or IVFFlat index handles search at this scale
 - **Embedding generation:** Batch processing via workers; can parallelize across episodes
 - **Training:** Datasets in Parquet; models fit in GPU memory

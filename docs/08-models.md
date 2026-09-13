@@ -7,7 +7,7 @@ ML models power PodFind's semantic search and future reranking.
 ### Embedding Models (Current)
 
 **Purpose**: Convert text to vectors for semantic search.  
-**Current**: sentence-transformers/e5-small-v2 (384-dim)
+**Current**: intfloat/multilingual-e5-small (384-dim)
 
 See [05-embeddings.md](05-embeddings.md) for model details and inference strategy.
 

@@ -6,9 +6,9 @@ The data pipeline ensures reproducible, auditable ML workflows by versioning sna
 
 ```mermaid
 graph LR
-    A["PostgreSQL<br/>Live Catalog<br/>~540k episodes"] -->|"make snapshot"| B["Snapshot<br/>Parquet<br/>Point-in-time"]
+    A["PostgreSQL<br/>Live Catalog<br/>~800k episodes"] -->|"make snapshot"| B["Snapshot<br/>Parquet<br/>Point-in-time"]
     B -->|"make dataset"| C["Dataset<br/>Filtered + Enriched<br/>Training-ready"]
-    C -->|"make relevance-pool"| D["Relevance Pool<br/>Human Judgments<br/>~2.5k queries"]
+    C -->|"make relevance-pool"| D["Relevance Pool<br/>180 queries<br/>~8.9k graded judgments"]
     D -->|"make eval"| E["Evaluation<br/>Metrics<br/>MLflow"]
     
     style A fill:#e1f5ff
@@ -58,13 +58,13 @@ sequenceDiagram
     participant Split
     participant Validate
 
-    Snapshot->>Filter: Load snapshot (540k episodes)
+    Snapshot->>Filter: Load snapshot (~800k episodes)
     Filter->>Filter: Apply filters (language, dates, transcripts)
-    Filter->>Enrich: ~100k episodes pass filter
+    Filter->>Enrich: eligible episodes pass filter
     Enrich->>Enrich: Add features (embeddings, BM25 scores, popularity)
     Enrich->>Merge: Enrich episodes
-    Merge->>Merge: Join with relevance judgments
-    Merge->>Split: ~50k judged (query, episode, label)
+    Merge->>Merge: Generate labeled pairs (weak + synthetic)
+    Merge->>Split: ~55k labeled examples
     Split->>Split: Train/Val/Test split (stratified)
     Split->>Validate: Validate schema
     Validate->>Validate: ✓ Parquet export

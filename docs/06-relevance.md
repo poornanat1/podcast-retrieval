@@ -23,7 +23,7 @@ Ground truth for evaluating retrieval quality comes from human-labeled relevance
 
 2. **Pool candidates**: Run multiple retrieval systems on each query
    - Lexical (BM25)
-   - Vector (e5-small-v2)
+   - Vector (multilingual-e5-small)
    - Hybrid (RRF)
    - Popularity baselines
 

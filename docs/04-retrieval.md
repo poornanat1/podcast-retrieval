@@ -24,7 +24,7 @@ PodFind combines lexical (BM25) and vector (embeddings) search via Reciprocal Ra
 
 | Aspect | Details |
 |--------|---------|
-| **Model** | sentence-transformers/e5-small-v2 (384-dim) |
+| **Model** | intfloat/multilingual-e5-small (384-dim) |
 | **Storage** | PostgreSQL `pgvector` column + HNSW index |
 | **Distance** | Cosine similarity (normalized vectors) |
 | **Strengths** | Semantic understanding, paraphrasing, exploratory queries |
@@ -106,7 +106,7 @@ sequenceDiagram
 
 **Components:**
 - Lexical: PostgreSQL BM25
-- Vector: e5-small-v2 pretrained embeddings  
+- Vector: multilingual-e5-small pretrained embeddings  
 - Merge: RRF (k=60, no hyperparameter tuning)
 
 ### Future: Learned Reranker

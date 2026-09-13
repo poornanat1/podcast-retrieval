@@ -77,7 +77,7 @@ eval_ndcg_at_10{method=\"hybrid\"} 0.64
 eval_coverage{method=\"hybrid\"} 0.42
 
 # Model metrics
-embedding_inference_latency_ms{model=\"e5-small-v2\",percentile=\"p95\"} 100
+embedding_inference_latency_ms{model=\"multilingual-e5-small\",percentile=\"p95\"} 100
 embedding_cache_hit_ratio 0.82
 ```
 
@@ -353,7 +353,7 @@ import mlflow
 
 def log_embedding_cost(num_tokens: int, model: str):
     """Log embedding API cost."""
-    # e5-small-v2: free (local inference)
+    # multilingual-e5-small: free (local inference)
     # Claude API: $0.075 per 1M tokens
     if "claude" in model:
         cost = num_tokens * 0.075 / 1e6

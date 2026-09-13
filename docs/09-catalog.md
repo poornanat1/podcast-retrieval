@@ -6,8 +6,8 @@ The catalog worker maintains a self-updating podcast feed, discovering new shows
 
 ```mermaid
 graph LR
-    A["Discovery Sources<br/>Apple Podcasts<br/>Podindex<br/>User Submissions"] -->|"Add new"| B["Shows<br/>~1,300"]
-    B -->|"Adaptive polling<br/>4h - 48h"| C["Episodes<br/>~540k"]
+    A["Discovery Source<br/>Particle data platform<br/>(trending + topical search)"] -->|"Add new"| B["Shows<br/>~1,800"]
+    B -->|"Adaptive polling<br/>15m - 24h"| C["Episodes<br/>~800k"]
     C -->|"Dedup<br/>by GUID"| D["New Episodes"]
     D -->|"Request transcripts"| E["Transcript Parser"]
     E -->|"Store"| F["PostgreSQL<br/>Text Index"]
@@ -21,15 +21,14 @@ graph LR
 
 **Goal**: Continuously discover new podcast feeds.
 
-**Sources**:
-- Podcast directories (Apple Podcasts, Spotify)
-- RSS aggregators (Podindex.org)
-- User submissions
-- Category feeds
+**Source**: the [Particle data platform](https://docs.particle.pro) — daily
+trending charts plus topical searches; RSS feed URLs come back with each
+show and remain the authoritative source for episodes.
 
 **Run discovery:**
 ```bash
-make discover
+docker compose run --rm catalog-worker -oneshot -trending 100
+docker compose run --rm catalog-worker -oneshot -discover "machine learning"
 ```
 
 ## RSS Polling: Fetching Episodes
