@@ -10,13 +10,17 @@ import psycopg
 
 
 def build_system(name: str, conn: psycopg.Connection):
+    from ml.retrieval.hybrid import HybridRRF
     from ml.retrieval.lexical import LexicalSearch
     from ml.retrieval.popularity import CategoryPopularity, GlobalPopularity
+    from ml.retrieval.vector import VectorSearch
 
     registry = {
         LexicalSearch.name: LexicalSearch,
         GlobalPopularity.name: GlobalPopularity,
         CategoryPopularity.name: CategoryPopularity,
+        VectorSearch.name: VectorSearch,
+        HybridRRF.name: HybridRRF,
     }
     if name not in registry:
         raise ValueError(f"unknown retrieval system {name!r}; known: {sorted(registry)}")

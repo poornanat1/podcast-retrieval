@@ -38,7 +38,10 @@ dataset:
 relevance-queries:
 	$(UV) run python -m ml.relevance.queries --snapshot $(SNAPSHOT)
 
-POOL_SYSTEMS ?= lexical-fts,popularity-global,popularity-category
+POOL_SYSTEMS ?= lexical-fts,popularity-global,popularity-category,vector-e5-small,hybrid-rrf
+
+embed:
+	$(UV) run python -m ml.embeddings.embed
 
 relevance-pool:
 	$(UV) run python -m ml.relevance.pool --systems $(POOL_SYSTEMS)
