@@ -1,6 +1,9 @@
 services:
   postgres:
     image: pgvector/pgvector:pg17
+    # Parallel index builds (HNSW over ~800k vectors) need real shared
+    # memory; the Docker default of 64MB fails with spurious "disk full".
+    shm_size: 2gb
     environment:
       POSTGRES_USER: podfind
       POSTGRES_PASSWORD: podfind

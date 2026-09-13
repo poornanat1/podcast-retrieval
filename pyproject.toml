@@ -11,6 +11,8 @@ dependencies = [
     "psycopg[binary]>=3.2,<4",
     "minio>=7.2,<8",
     "openai>=1.60,<3",
+    "sentence-transformers>=3,<6",
+    "pgvector>=0.3,<1",
 ]
 
 [dependency-groups]
