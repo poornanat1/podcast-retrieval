@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from pathlib import Path
 
 from ml.datasets.snapshot import DEFAULT_DATABASE_URL
 from ml.evaluation.run import run_config
@@ -40,6 +41,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("configs", nargs="+")
     parser.add_argument("--no-mlflow", action="store_true")
+    parser.add_argument("--json-out", default="",
+                        help="also write the full summaries to this JSON file")
     parser.add_argument(
         "--database-url", default=os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
     )
@@ -50,6 +53,11 @@ def main(argv: list[str] | None = None) -> int:
         for path in args.configs
     ]
     print(markdown_table(summaries))
+    if args.json_out:
+        import json
+
+        Path(args.json_out).write_text(json.dumps(summaries, indent=2) + "\n")
+        print(f"summaries written to {args.json_out}")
     return 0
 
 

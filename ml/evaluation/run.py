@@ -66,6 +66,9 @@ def run_config(config_path: str | Path, database_url: str, use_mlflow: bool) -> 
         catalog_size, episode_podcast, head = catalog_stats(
             conn, config.get("head_podcast_share", 0.1)
         )
+        with conn.cursor() as cur:
+            cur.execute("SELECT episode_id FROM transcripts")
+            episodes_with_transcript = {row[0] for row in cur.fetchall()}
         system = build_system(config["system"], conn)
         report = evaluate(
             system,
@@ -76,6 +79,7 @@ def run_config(config_path: str | Path, database_url: str, use_mlflow: bool) -> 
             catalog_size=catalog_size,
             episode_podcast=episode_podcast,
             head_podcasts=head,
+            episodes_with_transcript=episodes_with_transcript,
         )
 
     summary = {
@@ -84,6 +88,7 @@ def run_config(config_path: str | Path, database_url: str, use_mlflow: bool) -> 
         "skipped_queries": report.skipped_queries,
         "global": report.global_metrics,
         "by_query_type": report.by_query_type,
+        "by_query_language": report.by_query_language,
     }
 
     if use_mlflow:
@@ -111,6 +116,8 @@ def run_config(config_path: str | Path, database_url: str, use_mlflow: bool) -> 
                                 "skipped_queries": report.skipped_queries})
             for query_type, values in report.by_query_type.items():
                 mlflow.log_metrics({f"{query_type}__{k}": v for k, v in values.items()})
+            for lang, values in report.by_query_language.items():
+                mlflow.log_metrics({f"lang_{lang}__{k}": v for k, v in values.items()})
             mlflow.log_dict(summary, "summary.json")
             mlflow.log_dict({"per_query": report.per_query}, "per_query.json")
             summary["mlflow_experiment"] = config.get("mlflow_experiment", "retrieval-eval")

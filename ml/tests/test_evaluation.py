@@ -77,6 +77,7 @@ def test_harness_end_to_end() -> None:
         catalog_size=100,
         episode_podcast={10: 1, 11: 1, 99: 2, 98: 2, 20: 3},
         head_podcasts={1},
+        episodes_with_transcript={10, 20},
     )
 
     assert report.queries == 2 and report.skipped_queries == 1
@@ -94,3 +95,18 @@ def test_harness_end_to_end() -> None:
     assert set(report.by_query_type) == {"navigational", "exploratory"}
     assert report.by_query_type["navigational"]["mrr"] == 1.0
     assert report.by_query_type["exploratory"]["mrr"] == pytest.approx(1 / 3, abs=1e-4)
+
+    # Item-side cohorts: transcript-bearing relevant items {10, 20} are both
+    # retrieved by rank 10 (recall 1.0 for both queries); the no-transcript
+    # partition is {11} (q1 only), also retrieved.
+    assert g["recall_at_10__transcript"] == pytest.approx(1.0)
+    assert g["recall_at_10__transcript__queries"] == 2
+    assert g["recall_at_10__no_transcript"] == pytest.approx(1.0)
+    # Head/tail: q1's relevant {10, 11} are head (podcast 1); q2's {20} is
+    # tail (podcast 3, not in head set).
+    assert g["recall_at_10__head__queries"] == 1
+    assert g["recall_at_10__tail"] == pytest.approx(1.0)
+
+    # Language grouping defaults to "en" when queries carry no language.
+    assert set(report.by_query_language) == {"en"}
+    assert report.by_query_language["en"]["queries"] == 2

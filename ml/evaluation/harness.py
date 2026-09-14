@@ -40,6 +40,7 @@ class EvalReport:
     skipped_queries: int
     global_metrics: dict[str, float]
     by_query_type: dict[str, dict[str, float]]
+    by_query_language: dict[str, dict[str, float]]
     per_query: list[dict]
 
 
@@ -54,6 +55,24 @@ def _aggregate(rows: list[dict], ks: list[int]) -> dict[str, float]:
     return out
 
 
+#: Ks reported for item-side cohorts (transcript / head-tail partitions).
+COHORT_KS = (10, 100)
+
+
+def _cohort_recalls(
+    ranked: list[int], partitions: dict[str, set[int]]
+) -> dict[str, float]:
+    """Recall restricted to each non-empty partition of the relevant set:
+    how well does the system retrieve *this kind* of relevant item?"""
+    out: dict[str, float] = {}
+    for label, members in partitions.items():
+        if not members:
+            continue
+        for k in COHORT_KS:
+            out[f"recall_at_{k}__{label}"] = metrics.recall_at_k(ranked, members, k)
+    return out
+
+
 def evaluate(
     system: RetrievalSystem,
     queries: list[dict],
@@ -63,15 +82,18 @@ def evaluate(
     catalog_size: int = 0,
     episode_podcast: dict[int, int] | None = None,
     head_podcasts: set[int] | None = None,
+    episodes_with_transcript: set[int] | None = None,
 ) -> EvalReport:
     ks = ks or [10, 50, 100]
     max_k = max(ks)
     episode_podcast = episode_podcast or {}
     head_podcasts = head_podcasts or set()
+    episodes_with_transcript = episodes_with_transcript or set()
 
     per_query: list[dict] = []
     latencies: list[float] = []
     retrieved_all: set[int] = set()
+    cohort_values: dict[str, list[float]] = defaultdict(list)
     result_count = 0
     tail_count = 0
     skipped = 0
@@ -98,6 +120,7 @@ def evaluate(
         row = {
             "query_id": query["query_id"],
             "query_type": query["query_type"],
+            "query_language": query.get("language") or "en",
             "results": len(ranked),
             "relevant": len(relevant),
             "latency_ms": round(elapsed_ms, 2),
@@ -109,11 +132,28 @@ def evaluate(
             row[f"hit_rate_at_{k}"] = metrics.hit_rate_at_k(ranked, relevant, k)
         per_query.append(row)
 
+        with_transcript = {e for e in relevant if e in episodes_with_transcript}
+        head_relevant = {
+            e for e in relevant if episode_podcast.get(e) in head_podcasts
+        }
+        for key, value in _cohort_recalls(ranked, {
+            "transcript": with_transcript,
+            "no_transcript": relevant - with_transcript,
+            "head": head_relevant,
+            "tail": relevant - head_relevant,
+        }).items():
+            cohort_values[key].append(value)
+
     by_type: dict[str, list[dict]] = defaultdict(list)
+    by_language: dict[str, list[dict]] = defaultdict(list)
     for row in per_query:
         by_type[row["query_type"]].append(row)
+        by_language[row["query_language"]].append(row)
 
     global_metrics = _aggregate(per_query, ks)
+    for key, values in sorted(cohort_values.items()):
+        global_metrics[key] = round(sum(values) / len(values), 4)
+        global_metrics[f"{key}__queries"] = len(values)
     global_metrics["latency_ms_p50"] = round(metrics.percentile(latencies, 50), 2)
     global_metrics["latency_ms_p95"] = round(metrics.percentile(latencies, 95), 2)
     if catalog_size:
@@ -127,5 +167,9 @@ def evaluate(
         skipped_queries=skipped,
         global_metrics=global_metrics,
         by_query_type={t: _aggregate(rows, ks) for t, rows in sorted(by_type.items())},
+        by_query_language={
+            lang: {**_aggregate(rows, ks), "queries": len(rows)}
+            for lang, rows in sorted(by_language.items())
+        },
         per_query=per_query,
     )
