@@ -45,15 +45,17 @@ Python owns the ML lifecycle, Go owns ingestion and serving, PostgreSQL
 
 **Working today:** a self-maintaining catalog (~1,800 shows, ~800k
 episodes, ~87k transcripts) with adaptive feed polling and daily discovery;
-weighted multilingual full-text search with hard structured filters; a
-graded relevance set with an evaluation harness (Recall@K, MRR, NDCG,
-coverage, latency) logging to MLflow; and a deterministic dataset pipeline
-publishing versioned, honestly-labeled training snapshots.
+weighted multilingual full-text search, pretrained-embedding ANN search in
+`pgvector`, and hybrid reciprocal-rank fusion, all with hard structured
+filters; a graded relevance set with an evaluation harness (Recall@K, MRR,
+NDCG, cohort coverage, latency) logging to MLflow and a checked-in baseline
+report; a deterministic dataset pipeline publishing versioned,
+honestly-labeled training snapshots; and a two-tower retrieval model with a
+shared training/serving feature contract.
 
-**Ahead:** pretrained-embedding and two-tower retrieval, hard-negative
-mining, the learned reranker, voice capture with speech-robustness
-evaluation, the public search API, and production deployment with drift
-monitoring.
+**Ahead:** two-tower training and hard-negative mining, the learned
+reranker, voice capture with speech-robustness evaluation, the public
+search API, and production deployment with drift monitoring.
 
 ## Development
 

@@ -7,8 +7,9 @@ the catalog as of a moment — and everything downstream is pure.
 
     uv run python -m ml.datasets.snapshot --out data/snapshots
 
-Writes ``data/snapshots/<snapshot_id>/`` containing ``episodes.parquet``,
-``podcasts.parquet``, and ``manifest.json``; ``data/snapshots/latest``
+Writes ``data/snapshots/<snapshot_id>/`` containing ``episodes.parquet`` (with
+a bounded transcript excerpt per episode), ``podcasts.parquet``, and
+``manifest.json``; ``data/snapshots/latest``
 points at the newest snapshot id.
 """
 
@@ -27,10 +28,16 @@ import psycopg
 
 DEFAULT_DATABASE_URL = "postgres://podfind:podfind@localhost:5432/podfind"
 
-EPISODES_QUERY = """
+# Transcripts are bounded to a head excerpt: the episode tower reads a few
+# hundred tokens of transcript, and full transcripts would dominate the
+# snapshot's size.
+TRANSCRIPT_EXCERPT_CHARS = 4000
+
+EPISODES_QUERY = f"""
     SELECT e.id, e.podcast_id, e.title, e.description, e.language,
            e.duration_seconds, e.published_at, e.explicit, e.content_hash,
-           (t.episode_id IS NOT NULL) AS has_transcript
+           (t.episode_id IS NOT NULL) AS has_transcript,
+           coalesce(left(t.content, {TRANSCRIPT_EXCERPT_CHARS}), '') AS transcript_excerpt
     FROM episodes e
     LEFT JOIN transcripts t ON t.episode_id = e.id
     ORDER BY e.id

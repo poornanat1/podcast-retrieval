@@ -90,8 +90,14 @@ ml/                      # Python: ML pipeline
 │   ├── run.py           # Run evaluation
 │   ├── metrics.py       # Metric computation
 │   └── __init__.py
+├── features/            # Shared training/serving features
+│   ├── contract.py      # Feature contract (vocabs, budgets, buckets)
+│   ├── featurize.py     # Query and episode batches from raw rows
+│   ├── text.py          # Passage / query text composition
+│   └── __init__.py
 ├── models/              # ML model definitions
-│   ├── reranker.py      # Two-tower reranker
+│   ├── two_tower/       # Two-tower retrieval model
+│   ├── reranker/        # Second-stage ranker
 │   └── __init__.py
 ├── relevance/           # Relevance judgments
 │   ├── pool.py          # Create relevance pool
@@ -109,6 +115,7 @@ ml/                      # Python: ML pipeline
 │   ├── train.py         # Training loop
 │   └── __init__.py
 └── tests/               # Python unit tests
+    ├── test_two_tower.py
     ├── test_retrieval.py
     ├── test_datasets.py
     └── __init__.py

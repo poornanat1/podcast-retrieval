@@ -36,7 +36,10 @@ graph LR
 make snapshot
 ```
 
-**Output**: Parquet files + metadata.json (timestamp, row counts, git commit)
+**Output**: `episodes.parquet` (catalog columns plus a bounded transcript
+excerpt, the first 4,000 characters, for the episode tower),
+`podcasts.parquet`, and `manifest.json` (snapshot id, timestamp, row counts,
+file hashes)
 
 ### Snapshot Retention
 - Keep: Snapshots used in published experiments (indefinitely)
