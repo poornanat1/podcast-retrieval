@@ -127,28 +127,67 @@ popularity = {
 
 ```mermaid
 graph LR
-    A["Relevance<br/>Judgments"] -->|"Extract triplets"| B["Training Data<br/>Query+Pos+Neg"]
-    B -->|"Triplet loss"| C["Train Loop<br/>e.g. 5 epochs"]
-    C -->|"Log metrics"| D["MLflow"]
-    D -->|"Best checkpoint"| E["Model<br/>Registry"]
-    E -->|"ONNX export"| F["Production"]
-    
+    A["Versioned dataset<br/>train / validation"] --> C["Training loop<br/>ml/training/train.py"]
+    B["Snapshot<br/>episode rows"] --> C
+    C -->|"metrics per step"| D["MLflow"]
+    C -->|"artifact.json + weights"| E["Model artifact<br/>data/models/"]
+    E -->|"acceptance gates"| F["Registry"]
+
     style C fill:#fff3e0
     style E fill:#e8f5e9
 ```
 
-### Training Steps
-
-1. **Prepare**: Extract triplets from relevance judgments (positive/negative pairs)
-2. **Train**: Contrastive loss on (query, positive episode, negative episode)
-3. **Log**: MLflow tracks metrics, hyperparameters, best checkpoint
-4. **Evaluate**: See [07-evaluation.md](07-evaluation.md)
-5. **Export**: Save to ONNX for Go inference
-
 **Run training:**
 ```bash
-make train
+make train                                   # experiments/training/two-tower-v1.json
+make train TRAIN_CONFIG=experiments/training/<other>.json
+uv run python -m ml.training.train --config ... --max-steps 20 --no-mlflow   # smoke run
 ```
+
+**Inputs**: a checked-in training config (dataset directory, model config,
+optimizer settings, intended use), the versioned dataset it names, and the
+snapshot that dataset was built from — the loop refuses to run against a
+different snapshot. The feature contract's vocabularies are built from that
+snapshot.
+
+**Loss**: contrastive softmax. Each step encodes the batch's queries and a
+candidate block of `[positives | random catalog negatives]` (the negatives
+sampled per example when the dataset was built) and takes cross-entropy of
+each query's positive over every candidate, so all other examples'
+positives act as in-batch negatives. Two masks keep label noise out of the
+gradient: a candidate that is the query's own positive episode, or the
+positive of an example with identical query text (weak topic labels share
+the category name as query), is never treated as a negative.
+
+**Optimization**: AdamW with a small learning rate for the pretrained
+encoder and a larger one for the new heads and embeddings, linear warmup
+then linear decay, gradient clipping. Gradient checkpointing on the encoder
+is on by default: each step encodes a batch of queries plus several hundred
+256-token candidates, and recomputing activations in the backward pass is
+what makes that fit a laptop GPU's memory. Label strength can optionally
+weight examples (`weight_by_label_strength`).
+
+**Logged to MLflow** (`two-tower-training`): dataset version, snapshot id,
+config and contract fingerprints, code revision, every model and training
+parameter; per-step training loss, candidate-set accuracy and MRR, learning
+rate; validation loss / accuracy / MRR on a fixed set of validation batches.
+
+**Artifact** (`data/models/<name>-<dataset version>-<config hash>/`): the
+layout above, with `artifact.json` extended by dataset version and content
+hash, snapshot id, the full training config, steps and epochs completed,
+device and wall time, final metrics, the MLflow run id, and the intended
+use. Candidate-set metrics are training diagnostics only; the model earns
+its place through the relevance-set evaluation (see
+[07-evaluation.md](07-evaluation.md)). They saturate quickly on the
+bootstrap data — an untrained model already ranks the positive first for
+nearly every synthetic title query against in-batch and random negatives —
+which is the measured case for hard-negative mining.
+
+**Measured** (laptop, Apple GPU, gradient checkpointing, 16 queries + 80
+candidates per step): ~3.2 s/step, so one epoch of the ~51k-example
+bootstrap dataset at batch 64 is on the order of an hour. Artifacts are
+~470 MB (weights dominate) and live under `data/models/`, which is not
+tracked.
 
 ### Two-Stage Ranking
 

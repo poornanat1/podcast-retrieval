@@ -16,12 +16,7 @@ from ml.features.contract import FeatureContract, normalize_category, normalize_
 from ml.features.featurize import Featurizer, age_days
 from ml.features.text import build_metadata_text
 from ml.models.two_tower import TextEncoder, TwoTowerConfig, TwoTowerModel
-
-VOCAB = (
-    "[PAD] [UNK] [CLS] [SEP] [MASK] passage query : , . the a of and about show episode "
-    "news science comedy history space rockets launch cooking bread transcript hello world "
-    "publisher categories acme"
-).split()
+from ml.tests.helpers import tiny_backbone, tiny_tokenizer
 
 
 @pytest.fixture(scope="module")
@@ -31,25 +26,12 @@ def contract() -> FeatureContract:
 
 @pytest.fixture(scope="module")
 def tokenizer(tmp_path_factory):
-    from transformers import BertTokenizerFast
-
-    vocab_file = tmp_path_factory.mktemp("tok") / "vocab.txt"
-    vocab_file.write_text("\n".join(VOCAB) + "\n")
-    return BertTokenizerFast(vocab_file=str(vocab_file), model_max_length=128)
+    return tiny_tokenizer(tmp_path_factory.mktemp("tok"))
 
 
 @pytest.fixture(scope="module")
 def featurizer(contract, tokenizer) -> Featurizer:
     return Featurizer(contract, tokenizer)
-
-
-def tiny_backbone():
-    from transformers import BertConfig, BertModel
-
-    return BertModel(BertConfig(
-        vocab_size=len(VOCAB), hidden_size=32, num_hidden_layers=1, num_attention_heads=2,
-        intermediate_size=64, max_position_embeddings=128, pad_token_id=0,
-    ))
 
 
 def make_model(contract, **overrides) -> TwoTowerModel:

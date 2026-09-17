@@ -17,6 +17,7 @@ mlruns/
 mlartifacts/
 data/snapshots/
 data/datasets/
+data/models/
 
 # Local configuration
 .env

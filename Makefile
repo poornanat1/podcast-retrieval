@@ -2,7 +2,7 @@ GO ?= go
 UV ?= uv
 DATABASE_URL ?= postgres://podfind:podfind@localhost:5432/podfind?sslmode=disable
 
-.PHONY: all build test lint ci python-env migrate snapshot dataset relevance-queries relevance-pool relevance-review relevance-export reproduce
+.PHONY: all build test lint ci python-env migrate snapshot dataset relevance-queries relevance-pool relevance-review relevance-export embed eval eval-all train reproduce
 
 all: build
 
@@ -62,6 +62,11 @@ eval:
 
 eval-all:
 	$(UV) run python -m ml.evaluation.compare experiments/eval/*.json
+
+TRAIN_CONFIG ?= experiments/training/two-tower-v1.json
+
+train:
+	$(UV) run python -m ml.training.train --config $(TRAIN_CONFIG)
 
 reproduce:
 	@echo "make reproduce: not implemented yet" && exit 1

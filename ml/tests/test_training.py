@@ -1,0 +1,180 @@
+"""Training tests: candidate masking, the loss, batching, and an offline
+end-to-end smoke run that writes a model artifact."""
+
+import json
+
+import pandas as pd
+import pytest
+import torch
+
+from ml.features import FeatureContract, Featurizer
+from ml.models.two_tower import TwoTowerConfig, TwoTowerModel
+from ml.tests.helpers import tiny_backbone, tiny_tokenizer
+from ml.tests.test_build import write_snapshot
+from ml.training.data import ExampleBatcher, load_episode_rows
+from ml.training.loss import candidate_mask, contrastive_softmax_loss
+from ml.training.train import TrainConfig, build_optimizer, train
+
+
+def test_candidate_mask_blocks_duplicate_and_sibling_positives() -> None:
+    # Three queries; q0 and q1 share query text ("history"); q2's positive
+    # (episode 30) also appears as q0's random negative (candidate 3).
+    positive_index = torch.tensor([0, 1, 2])
+    positive_ids = torch.tensor([10, 20, 30])
+    candidate_ids = torch.tensor([10, 20, 30, 30, 99])
+    query_keys = torch.tensor([0, 0, 1])
+    candidate_keys = torch.tensor([0, 0, 1, -1, -1])
+    mask = candidate_mask(positive_index, positive_ids, candidate_ids, query_keys, candidate_keys)
+    assert mask.tolist() == [
+        [True, False, True, True, True],  # q0: q1's positive is a sibling -> masked
+        [False, True, True, True, True],  # q1: likewise for q0's positive
+        [True, True, True, False, True],  # q2: candidate 3 *is* its positive -> masked
+    ]
+    assert mask.diagonal().all()  # every query keeps its own positive
+
+
+def test_contrastive_loss_and_diagnostics() -> None:
+    logits = torch.tensor([[5.0, 0.0, 0.0], [0.0, 1.0, 3.0]])
+    positive_index = torch.tensor([0, 1])
+    loss, diag = contrastive_softmax_loss(logits, positive_index)
+    expected = torch.nn.functional.cross_entropy(logits, positive_index)
+    assert torch.isclose(loss, expected)
+    assert diag["accuracy"] == 0.5 and diag["mrr"] == pytest.approx(0.75)
+    assert diag["candidates"] == 3.0
+
+    # Masking the distractor makes the second query's positive win.
+    mask = torch.tensor([[True, True, True], [True, True, False]])
+    _, diag = contrastive_softmax_loss(logits, positive_index, mask)
+    assert diag["accuracy"] == 1.0
+
+    # Weights: a zero-weight example contributes nothing.
+    weighted, _ = contrastive_softmax_loss(
+        logits, positive_index, weights=torch.tensor([1.0, 0.0])
+    )
+    per_query = torch.nn.functional.cross_entropy(logits, positive_index, reduction="none")
+    assert torch.isclose(weighted, per_query[0])
+
+
+@pytest.fixture
+def snapshot(tmp_path):
+    return write_snapshot(tmp_path, n_episodes=30)
+
+
+@pytest.fixture
+def featurizer(tmp_path):
+    contract = FeatureContract(languages=("en", "fr"), categories=("history", "technology"),
+                               max_metadata_tokens=32, max_query_tokens=16)
+    return Featurizer(contract, tiny_tokenizer(tmp_path))
+
+
+def make_examples(ids: list[int], negatives: dict[int, list[int]], query=None) -> pd.DataFrame:
+    return pd.DataFrame({
+        "example_id": [f"syn:{i}" for i in ids],
+        "event_time": pd.to_datetime(["2026-02-01T00:00:00+00:00"] * len(ids), utc=True),
+        "query_text": [query or f"topic number {i}" for i in ids],
+        "query_audio_variant": [""] * len(ids),
+        "user_history": [[] for _ in ids],
+        "positive_episode_id": ids,
+        "negative_episode_ids": [negatives.get(i, []) for i in ids],
+        "label_source": ["synthetic_query"] * len(ids),
+        "label_strength": [0.3] * len(ids),
+        "dataset_version": ["1.0.0-test"] * len(ids),
+    })
+
+
+def test_batcher_collates_positives_then_negatives(snapshot, featurizer) -> None:
+    examples = make_examples([1, 2, 3], {1: [4, 5], 2: [6, 999], 3: [7, 8]})
+    rows = load_episode_rows(snapshot, {1, 2, 3, 4, 5, 6, 7, 8})
+    assert rows[1]["podcast_title"] == "Show 1" and rows[1]["categories"] == ["History"]
+
+    batcher = ExampleBatcher(examples, rows, featurizer, negatives_per_example=2)
+    batches = list(batcher.batches(batch_size=3, shuffle=False))
+    assert len(batches) == 1
+    batch = batches[0]
+    assert batch.positive_index.tolist() == [0, 1, 2]
+    assert batch.positive_ids.tolist() == [1, 2, 3]
+    # Episode 999 is not in the snapshot and is dropped.
+    assert batch.candidate_ids.tolist() == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert batch.candidate_keys.tolist() == [0, 1, 2, -1, -1, -1, -1, -1]
+    assert batch.episodes["meta_input_ids"].shape[0] == 8
+    assert batch.query["input_ids"].shape[0] == 3
+    assert batch.weights.tolist() == pytest.approx([0.3, 0.3, 0.3])
+
+    # Identical query text shares a key so sibling positives get masked.
+    shared = ExampleBatcher(make_examples([1, 2], {}, query="history"), rows, featurizer, 2)
+    assert next(shared.batches(2, shuffle=False)).query_keys.tolist() == [0, 0]
+
+    with pytest.raises(ValueError, match="missing from the snapshot"):
+        ExampleBatcher(make_examples([1, 2, 31], {}), rows, featurizer, 2)
+
+
+def test_optimizer_separates_encoder_and_head_learning_rates(featurizer) -> None:
+    model = TwoTowerModel(TwoTowerConfig(embedding_dim=32, hidden_dim=16), featurizer.contract,
+                          tiny_backbone())
+    config = TrainConfig(name="t", dataset_dir="", intended_use="", encoder_lr=1e-5, head_lr=1e-3)
+    optimizer = build_optimizer(model, config)
+    encoder_group, head_group = optimizer.param_groups
+    assert encoder_group["lr"] == 1e-5 and head_group["lr"] == 1e-3
+    n_encoder = sum(p.numel() for p in encoder_group["params"])
+    assert n_encoder == sum(p.numel() for p in model.query_tower.encoder.parameters())
+    total = sum(p.numel() for p in model.parameters())
+    assert n_encoder + sum(p.numel() for p in head_group["params"]) == total
+
+
+def test_train_smoke_writes_artifact_with_metadata(tmp_path, snapshot, featurizer) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    train_ids = list(range(1, 13))
+    negatives = {i: [i + 12, i + 13] for i in train_ids}
+    make_examples(train_ids, negatives).to_parquet(dataset_dir / "train.parquet", index=False)
+    make_examples([26, 27, 28, 29], {26: [1], 27: [2], 28: [3], 29: [4]}).to_parquet(
+        dataset_dir / "validation.parquet", index=False
+    )
+    (dataset_dir / "manifest.json").write_text(json.dumps({
+        "name": "test-dataset", "dataset_version": "1.0.0-test",
+        "content_hash": "abc", "snapshot_id": "snaptest12345",
+    }))
+
+    config = TrainConfig(
+        name="smoke", dataset_dir=str(dataset_dir), snapshot=str(snapshot),
+        output_dir=str(tmp_path / "models"), intended_use="unit test only",
+        batch_size=4, negatives_per_example=2, max_steps=3, log_every=1,
+        eval_every=2, eval_batches=1, warmup_steps=1, seed=1,
+    )
+    torch.manual_seed(0)
+    model = TwoTowerModel(TwoTowerConfig(embedding_dim=32, hidden_dim=16, dropout=0.0),
+                          featurizer.contract, tiny_backbone())
+    before = {k: v.clone() for k, v in model.state_dict().items()}
+
+    out_dir, metadata = train(config, model=model, featurizer=featurizer,
+                              use_mlflow=False, device="cpu")
+
+    assert metadata["steps"] == 3
+    assert metadata["dataset_version"] == "1.0.0-test"
+    for key in ("train_loss", "train_accuracy", "validation_loss", "validation_mrr"):
+        assert key in metadata["metrics"] and metadata["metrics"][key] == metadata["metrics"][key]
+    changed = any(not torch.equal(before[k], v) for k, v in model.state_dict().items())
+    assert changed, "training did not update any weights"
+
+    artifact = json.loads((out_dir / "artifact.json").read_text())
+    for key in ("architecture", "embedding_dim", "feature_contract_sha256", "git_commit",
+                "dataset_version", "dataset_content_hash", "snapshot_id", "metrics",
+                "intended_use", "training_config", "training_config_sha256"):
+        assert key in artifact, key
+    assert artifact["intended_use"] == "unit test only"
+    assert artifact["feature_contract_sha256"] == featurizer.contract.fingerprint()
+
+    loaded = TwoTowerModel.load(out_dir)
+    reloaded = Featurizer.load(out_dir)
+    batch = reloaded.query_batch([{"query_text": "topic number 3"}])
+    with torch.no_grad():
+        assert torch.allclose(loaded.eval().encode_query(batch),
+                              model.eval().encode_query(batch), atol=1e-6)
+
+    # A dataset built from a different snapshot is refused.
+    (dataset_dir / "manifest.json").write_text(json.dumps({
+        "name": "test-dataset", "dataset_version": "1.0.0-test",
+        "content_hash": "abc", "snapshot_id": "other",
+    }))
+    with pytest.raises(SystemExit, match="built from snapshot"):
+        train(config, model=model, featurizer=featurizer, use_mlflow=False, device="cpu")

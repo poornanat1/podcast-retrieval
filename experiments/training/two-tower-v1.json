@@ -1,0 +1,35 @@
+{
+  "name": "two-tower-bootstrap",
+  "intended_use": "First-stage semantic candidate retrieval over the podcast episode catalog, replacing the pretrained-embedding ANN baseline if it beats it on the relevance set. Trained on synthetic title queries and weak topic labels only; not for ranking or for personalized retrieval.",
+  "dataset_dir": "data/datasets/search-retrieval-bootstrap-1.1.0-30f0542e74a5",
+  "snapshot": "data/snapshots",
+  "output_dir": "data/models",
+  "seed": 20260826,
+  "model": {
+    "embedding_dim": 384,
+    "hidden_dim": 512,
+    "dropout": 0.1,
+    "temperature": 0.05,
+    "share_text_encoder": true,
+    "use_transcript": true,
+    "use_structured": true,
+    "podcast_id_buckets": 0
+  },
+  "contract": {
+    "min_language_count": 100,
+    "min_category_count": 3
+  },
+  "batch_size": 64,
+  "negatives_per_example": 4,
+  "epochs": 1,
+  "encoder_lr": 2e-5,
+  "head_lr": 1e-3,
+  "weight_decay": 0.01,
+  "warmup_steps": 100,
+  "max_grad_norm": 1.0,
+  "weight_by_label_strength": false,
+  "log_every": 10,
+  "eval_every": 200,
+  "eval_batches": 20,
+  "mlflow_experiment": "two-tower-training"
+}

@@ -70,6 +70,7 @@ make relevance-pool  # Pool results from multiple retrieval systems
 make relevance-judge # LLM-assisted relevance labeling
 make eval            # Evaluate a single config
 make eval-all        # Evaluate all configs in experiments/eval/
+make train           # Train the two-tower model from a config
 
 make embed           # Embed all episodes with vectors
 ```
@@ -110,12 +111,14 @@ ml/                      # Python: ML pipeline
 │   ├── vector.py        # Vector search
 │   ├── hybrid.py        # RRF hybrid search
 │   └── __init__.py
-├── training/            # Model training
-│   ├── prepare_data.py  # Create training triplets
-│   ├── train.py         # Training loop
+├── training/            # Two-tower training
+│   ├── data.py          # Example batches joined to snapshot rows
+│   ├── loss.py          # Masked contrastive softmax loss
+│   ├── train.py         # Training loop, MLflow logging, artifacts
 │   └── __init__.py
 └── tests/               # Python unit tests
     ├── test_two_tower.py
+    ├── test_training.py
     ├── test_retrieval.py
     ├── test_datasets.py
     └── __init__.py
