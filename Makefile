@@ -2,7 +2,7 @@ GO ?= go
 UV ?= uv
 DATABASE_URL ?= postgres://podfind:podfind@localhost:5432/podfind?sslmode=disable
 
-.PHONY: all build test lint ci python-env migrate snapshot dataset relevance-queries relevance-pool relevance-review relevance-export embed eval eval-all train index reproduce
+.PHONY: all build test lint ci python-env migrate snapshot dataset relevance-queries relevance-pool relevance-review relevance-export embed llm-queries mine-negatives pool-export eval eval-all train index reproduce
 
 all: build
 
@@ -43,6 +43,19 @@ POOL_SYSTEMS ?= lexical-fts,popularity-global,popularity-category,vector-e5-smal
 embed:
 	$(UV) run python -m ml.embeddings.embed
 
+LLM_QUERY_EPISODES ?= 20000
+
+llm-queries:
+	$(UV) run python -m ml.datasets.llm_queries --snapshot $(SNAPSHOT) --episodes $(LLM_QUERY_EPISODES)
+
+QUERIES_FILE ?= data/snapshots/$(shell cat data/snapshots/latest)/llm-queries-gpt-5.1.jsonl
+
+mine-negatives:
+	$(UV) run python -m ml.hard_negatives.mine --queries $(QUERIES_FILE)
+
+pool-export:
+	$(UV) run python -m ml.evaluation.pool_rerank --export
+
 relevance-pool:
 	$(UV) run python -m ml.relevance.pool --systems $(POOL_SYSTEMS)
 
@@ -63,12 +76,12 @@ eval:
 eval-all:
 	$(UV) run python -m ml.evaluation.compare experiments/eval/*.json
 
-TRAIN_CONFIG ?= experiments/training/two-tower-v2.json
+TRAIN_CONFIG ?= experiments/training/two-tower-v3.json
 
 train:
 	$(UV) run python -m ml.training.train --config $(TRAIN_CONFIG)
 
-ARTIFACT ?= data/models/two-tower-bootstrap-v2-1.2.0-e2e0bf0793e6-67868919
+ARTIFACT ?= data/models/two-tower-llm-v3-1.0.0-d52b7c3b104f-62d87868
 
 index:
 	$(UV) run python -m ml.embeddings.two_tower_index --artifact $(ARTIFACT)

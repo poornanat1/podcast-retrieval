@@ -61,6 +61,17 @@ class TrainConfig:
     max_steps: int = 0  # 0 = full epochs
     encoder_lr: float = 2e-5
     head_lr: float = 1e-3
+    # Optimizer steps happen every ``accumulate_steps`` micro-batches.
+    accumulate_steps: int = 1
+    # Weight of a distillation term keeping both towers' vectors close to
+    # the frozen pretrained text model's (1 - cosine, query and episode
+    # sides). 0 disables it.
+    distill_weight: float = 0.0
+    # Directory with queries.jsonl, qrels.txt, and judged-episodes.parquet:
+    # every validation pass re-ranks each query's judged pool (see
+    # ml.evaluation.pool_rerank) and the best checkpoint by pool NDCG@10 is
+    # the one saved as final. Empty disables it.
+    pool_validation_dir: str = ""
     # Fine-tune only the top N encoder layers (0 = all). Freezing the token
     # embeddings and lower layers removes their activations and optimizer
     # state from memory and keeps the pretrained lexical representation.
@@ -166,7 +177,10 @@ def lr_lambda(total_steps: int, warmup_steps: int):
     return schedule
 
 
-def step_loss(model: TwoTowerModel, batch, weight_by_strength: bool):
+def step_loss(
+    model: TwoTowerModel, batch, weight_by_strength: bool,
+    teacher: TwoTowerModel | None = None, distill_weight: float = 0.0,
+):
     query_vectors = model.encode_query(batch.query)
     episode_vectors = model.encode_episode(batch.episodes)
     logits = model.logits(query_vectors, episode_vectors)
@@ -175,7 +189,18 @@ def step_loss(model: TwoTowerModel, batch, weight_by_strength: bool):
         batch.query_keys, batch.candidate_keys,
     )
     weights = batch.weights if weight_by_strength else None
-    return contrastive_softmax_loss(logits, batch.positive_index, mask, weights)
+    loss, diag = contrastive_softmax_loss(logits, batch.positive_index, mask, weights)
+    if teacher is not None and distill_weight > 0:
+        with torch.no_grad():
+            teacher_q = teacher.encode_query(batch.query)
+            teacher_e = teacher.encode_episode(batch.episodes)
+        distill = (1 - (query_vectors * teacher_q).sum(-1)).mean() + (
+            1 - (episode_vectors * teacher_e).sum(-1)
+        ).mean()
+        diag["contrastive_loss"] = loss.item()
+        diag["distill_loss"] = distill.item()
+        loss = loss + distill_weight * distill
+    return loss, diag
 
 
 @torch.no_grad()
@@ -216,6 +241,7 @@ def train(
     use_mlflow: bool = True,
     device: str | None = None,
     resume: bool = False,
+    teacher: TwoTowerModel | None = None,
 ) -> tuple[Path, dict[str, Any]]:
     """Run one training job; returns the artifact directory and its metadata.
     ``model``/``featurizer`` are injectable for tests; by default both come
@@ -237,12 +263,11 @@ def train(
 
     train_df = load_examples(dataset_dir / "train.parquet")
     validation_df = load_examples(dataset_dir / "validation.parquet")
-    if config.max_steps and config.max_steps * config.batch_size < len(train_df):
+    cap = config.max_steps * config.batch_size * max(config.accumulate_steps, 1)
+    if config.max_steps and cap < len(train_df):
         # Capped runs train on a seeded random subset of the split (a prefix
         # would be all of one generator's examples); the rest is never loaded.
-        train_df = train_df.sample(
-            n=config.max_steps * config.batch_size, random_state=config.seed
-        ).sort_values("example_id")
+        train_df = train_df.sample(n=cap, random_state=config.seed).sort_values("example_id")
     referenced: set[int] = set()
     for df in (train_df, validation_df):
         referenced.update(int(i) for i in df["positive_episode_id"])
@@ -279,6 +304,22 @@ def train(
     if config.gradient_checkpointing:
         enable_gradient_checkpointing(model)
 
+    if config.distill_weight > 0 and teacher is None:
+        # Zero-initialized heads make an untrained model exactly the
+        # pretrained text model, so this is the E5 baseline as a teacher.
+        teacher = TwoTowerModel.from_pretrained_text(contract, model.config)
+    if teacher is not None:
+        teacher = teacher.to(device).eval()
+        for p in teacher.parameters():
+            p.requires_grad_(False)
+
+    pool = None
+    if config.pool_validation_dir:
+        from ml.evaluation.pool_rerank import evaluate_pool, load_pool
+
+        pool_queries, pool_qrels, pool_rows = load_pool(config.pool_validation_dir)
+        pool = (pool_queries, pool_qrels, pool_rows)
+
     augmentation = {
         "age_jitter_days": config.age_jitter_days,
         "query_language_prob": config.query_language_prob,
@@ -290,7 +331,9 @@ def train(
     val_batcher = ExampleBatcher(
         validation_df, episode_rows, featurizer, config.negatives_per_example, **augmentation
     )
-    steps_per_epoch = math.ceil(len(train_batcher) / config.batch_size)
+    accumulate = max(config.accumulate_steps, 1)
+    batches_per_epoch = math.ceil(len(train_batcher) / config.batch_size)
+    steps_per_epoch = math.ceil(batches_per_epoch / accumulate)
     total_steps = config.max_steps or steps_per_epoch * config.epochs
 
     optimizer = build_optimizer(model, config)
@@ -330,7 +373,9 @@ def train(
             # Asynchronous so a slow tracking server never blocks the loop.
             mlflow.log_metrics(values, step=step, synchronous=False)
 
-    state = {"step": 0, "epoch": 0, "train": {}, "validation": {}, "interrupted": False}
+    state = {"step": 0, "epoch": 0, "train": {}, "validation": {}, "interrupted": False,
+             "best_step": 0, "best_pool_ndcg_at_10": -1.0}
+    best_weights: dict[str, torch.Tensor] | None = None
     if resume_state is not None:
         state["step"] = int(resume_state["step"])
         state["epoch"] = int(resume_state["epoch"])
@@ -354,6 +399,9 @@ def train(
             "final": final,
             "interrupted": state["interrupted"],
             "resumed_from": state.get("resumed_from"),
+            "best_step": state["best_step"] if pool is not None else None,
+            "best_pool_ndcg_at_10": state["best_pool_ndcg_at_10"] if pool is not None else None,
+            "selected_checkpoint": ("best" if final and pool is not None else "last"),
             "device": device,
             "seconds": round(time.time() - started, 1),
             "metrics": {**state["train"], **state["validation"]},
@@ -377,7 +425,17 @@ def train(
         return metadata
 
     def validate() -> None:
+        nonlocal best_weights
         state["validation"] = evaluate_split(model, val_batcher, config, device)
+        if pool is not None:
+            state["validation"].update(evaluate_pool(model, featurizer, *pool, device=device))
+            score = state["validation"].get("pool_ndcg_at_10", -1.0)
+            if score > state["best_pool_ndcg_at_10"]:
+                state["best_pool_ndcg_at_10"] = score
+                state["best_step"] = state["step"]
+                best_weights = {k: v.detach().to("cpu", copy=True)
+                                for k, v in model.state_dict().items()}
+            state["validation"]["best_pool_ndcg_at_10"] = state["best_pool_ndcg_at_10"]
         log_metrics(state["validation"], state["step"])
         if device == "mps":
             torch.mps.empty_cache()
@@ -388,14 +446,20 @@ def train(
         for epoch in range(state["epoch"], config.epochs):
             state["epoch"] = epoch
             skip = max(state["step"] - epoch * steps_per_epoch, 0)
+            micro = 0
+            optimizer.zero_grad(set_to_none=True)
             for batch in train_batcher.batches(config.batch_size, shuffle=True,
-                                               seed=config.seed + epoch, skip=skip):
-                loss, diag = step_loss(model, batch.to(device), config.weight_by_label_strength)
-                optimizer.zero_grad(set_to_none=True)
-                loss.backward()
+                                               seed=config.seed + epoch, skip=skip * accumulate):
+                loss, diag = step_loss(model, batch.to(device), config.weight_by_label_strength,
+                                       teacher, config.distill_weight)
+                (loss / accumulate).backward()
+                micro += 1
+                if micro % accumulate:
+                    continue
                 nn.utils.clip_grad_norm_(model.parameters(), config.max_grad_norm)
                 optimizer.step()
                 scheduler.step()
+                optimizer.zero_grad(set_to_none=True)
                 step = state["step"] = state["step"] + 1
                 if device == "mps" and step % 25 == 0:
                     torch.mps.empty_cache()  # return cached blocks to the OS
@@ -430,6 +494,10 @@ def train(
         print(json.dumps({"step": state["step"], "interrupted": True}), flush=True)
 
     validate()
+    if pool is not None and best_weights is not None and state["best_step"] != state["step"]:
+        model.load_state_dict(best_weights)
+        print(json.dumps({"restored_best_step": state["best_step"],
+                          "best_pool_ndcg_at_10": state["best_pool_ndcg_at_10"]}), flush=True)
     metadata = save_artifact(final=True)
     if mlflow is not None:
         mlflow.flush_async_logging()

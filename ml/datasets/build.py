@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import hashlib
+import itertools
 import json
 import random
 import re
@@ -50,6 +51,17 @@ class GeneratorSpec:
     label_strength: float = 0.3
     language_prefix: str = ""
     max_per_category: int = 500  # topic_similarity only
+    # llm_query only: raw inputs relative to the snapshot directory and the
+    # negative mix. Each example gets ``hard_negatives`` mined candidates
+    # (seeded sample from the top ``hard_pool`` per query), then
+    # ``popular_negatives`` drawn with probability proportional to the
+    # show's episode count, then random catalog episodes up to
+    # ``negatives_per_example``.
+    queries_file: str = ""
+    negatives_file: str = ""
+    hard_negatives: int = 0
+    hard_pool: int = 20
+    popular_negatives: int = 0
 
 
 @dataclasses.dataclass(frozen=True)
@@ -243,9 +255,91 @@ def generate_topic_similarity(
     return rows[: spec.max_examples]
 
 
+def _sample_popular(
+    seed: int, key: object, universe: list[int], cum_weights: list[float], k: int,
+    excluded: frozenset[int],
+) -> list[int]:
+    rng = random.Random(f"{seed}:pop:{key}")
+    chosen: list[int] = []
+    for _ in range(20 * max(k, 1)):
+        if len(chosen) >= k:
+            break
+        candidate = rng.choices(universe, cum_weights=cum_weights, k=1)[0]
+        if candidate not in excluded and candidate not in chosen:
+            chosen.append(candidate)
+    return chosen
+
+
+def generate_llm_query(
+    config: BuildConfig, spec: GeneratorSpec, frames: dict[str, pd.DataFrame]
+) -> list[dict]:
+    """LLM-written natural-language queries (``ml.datasets.llm_queries``)
+    paired with the episode they were written for, with a negative mix of
+    mined hard negatives, popularity-weighted negatives, and random ones.
+    Clearly labeled synthetic."""
+    episodes = frames["episodes"]
+    queries = frames["llm_queries"]
+    mined = frames.get("mined_negatives", {})
+    by_id = episodes.set_index("id")
+    rows_by_id = by_id[["podcast_id", "published_at", "language"]].to_dict("index")
+
+    universe = sorted(int(i) for i in episodes["id"])
+    counts = episodes["podcast_id"].value_counts()
+    weights = [float(counts[rows_by_id[i]["podcast_id"]]) for i in universe]
+    cum_weights = list(itertools.accumulate(weights))
+
+    candidates = []
+    for q in queries.itertuples(index=False):
+        episode_id = int(q.episode_id)
+        meta = rows_by_id.get(episode_id)
+        if meta is None or pd.isna(meta["published_at"]):
+            continue
+        if spec.language_prefix and not str(meta["language"] or "").startswith(
+            spec.language_prefix
+        ):
+            continue
+        if len(str(q.query_text).strip()) < 3:
+            continue
+        candidates.append((episode_id, str(q.query_text).strip(), meta))
+    picked = set(
+        sorted((c[0] for c in candidates),
+               key=lambda i: _stable_order_key(config.seed, "llm-sample", i))[: spec.max_examples]
+    )
+
+    rows = []
+    for episode_id, query, meta in candidates:
+        if episode_id not in picked:
+            continue
+        excluded = frozenset({episode_id})
+        negatives: list[int] = []
+        hard = [int(h["episode_id"]) for h in mined.get(episode_id, [])[: spec.hard_pool]
+                if int(h["episode_id"]) != episode_id]
+        if spec.hard_negatives and hard:
+            rng = random.Random(f"{config.seed}:hard:{episode_id}")
+            negatives.extend(rng.sample(hard, min(spec.hard_negatives, len(hard))))
+        if spec.popular_negatives:
+            negatives.extend(_sample_popular(
+                config.seed, episode_id, universe, cum_weights, spec.popular_negatives,
+                excluded | frozenset(negatives),
+            ))
+        remaining = config.negatives_per_example - len(negatives)
+        if remaining > 0:
+            negatives.extend(_sample_negatives(
+                config.seed, episode_id, universe, remaining,
+                excluded=excluded | frozenset(negatives),
+            ))
+        rows.append(_example_row(
+            f"llm:{episode_id}", meta["published_at"], query, episode_id,
+            negatives[: config.negatives_per_example], LabelSource.SYNTHETIC_QUERY,
+            spec.label_strength,
+        ))
+    return rows
+
+
 GENERATORS = {
     "synthetic_query": generate_synthetic_query,
     "topic_similarity": generate_topic_similarity,
+    "llm_query": generate_llm_query,
 }
 
 
@@ -303,11 +397,23 @@ def build_dataset(
         "podcasts": pd.read_parquet(snapshot_dir / "podcasts.parquet"),
     }
 
+    inputs: dict[str, str] = {}
     rows: list[dict] = []
     for spec in config.generators:
         generator = GENERATORS.get(spec.type)
         if generator is None:
             raise ValueError(f"unknown generator {spec.type!r}")
+        if spec.queries_file:
+            path = snapshot_dir / spec.queries_file
+            frames["llm_queries"] = pd.read_json(path, lines=True)
+            inputs[spec.queries_file] = _file_sha256(path)
+        if spec.negatives_file:
+            path = snapshot_dir / spec.negatives_file
+            frames["mined_negatives"] = {
+                int(rec["episode_id"]): rec["hard"]
+                for rec in (json.loads(line) for line in path.read_text().splitlines() if line)
+            }
+            inputs[spec.negatives_file] = _file_sha256(path)
         rows.extend(generator(config, spec, frames))
 
     df = pd.DataFrame(rows, columns=COLUMNS)
@@ -346,6 +452,7 @@ def build_dataset(
         "config": dataclasses.asdict(config),
         "config_sha256": config.sha256(),
         "snapshot_id": snapshot_manifest["snapshot_id"],
+        "inputs": inputs,
         "splits": split_meta,
         "label_class_shares": result.report.class_shares if result.report else {},
         "label_source_counts": result.report.source_counts if result.report else {},

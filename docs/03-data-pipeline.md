@@ -46,6 +46,23 @@ file hashes)
 - Archive: Older snapshots to S3 (after 6 months)
 - Cleanup: Development snapshots (rolling 2-week window)
 
+### Raw inputs beyond the snapshot
+
+Two optional inputs live next to the snapshot and are hashed into the
+dataset manifest (`inputs`), so a dataset stays reproducible even though
+producing them is not deterministic:
+
+- `llm-queries-<model>.jsonl` — one natural-language query per sampled
+  episode, written by an LLM (`make llm-queries`,
+  `ml/datasets/llm_queries.py`); the `llm_query` generator pairs each with
+  its episode. Title-as-query examples teach title copying; these read like
+  searches.
+- `llm-queries-<model>-negatives.jsonl` — hard negatives mined for those
+  queries with the baseline retrievers (`make mine-negatives`,
+  `ml/hard_negatives/mine.py`): top candidates from vector and lexical
+  search minus the positive and its show. The generator mixes a seeded
+  sample of them with popularity-weighted and random negatives.
+
 ## Datasets: Versioned Training & Eval Data
 
 **Purpose**: Apply filters, enrich features, and join with relevance judgments.

@@ -72,6 +72,9 @@ make eval            # Evaluate a single config
 make eval-all        # Evaluate all configs in experiments/eval/
 make train           # Train the two-tower model from a config
 make index           # Build a two-tower artifact's episode vector index
+make llm-queries     # LLM-written natural-language queries for sampled episodes
+make mine-negatives  # Hard negatives for those queries from the baseline retrievers
+make pool-export     # Judged episode rows for pool validation during training
 
 make embed           # Embed all episodes with vectors
 ```
@@ -84,6 +87,7 @@ ml/                      # Python: ML pipeline
 ├── datasets/            # Dataset building
 │   ├── snapshot.py      # Create snapshots
 │   ├── build.py         # Build datasets from snapshots
+│   ├── llm_queries.py   # LLM-written queries (raw dataset input)
 │   └── __init__.py
 ├── embeddings/          # Embedding jobs
 │   ├── embed.py         # Batch embed episodes (pretrained baseline)
@@ -93,6 +97,9 @@ ml/                      # Python: ML pipeline
 ├── evaluation/          # Evaluation harness
 │   ├── run.py           # Run evaluation
 │   ├── metrics.py       # Metric computation
+│   ├── pool_rerank.py   # Judged-pool re-ranking (training validation)
+├── hard_negatives/
+│   ├── mine.py          # Hard negatives from the baseline retrievers
 │   └── __init__.py
 ├── features/            # Shared training/serving features
 │   ├── contract.py      # Feature contract (vocabs, budgets, buckets)

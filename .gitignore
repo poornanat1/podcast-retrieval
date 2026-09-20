@@ -27,3 +27,4 @@ data/models/
 
 # Relevance pooling output (machine-local; queries and judgments are tracked)
 data/relevance/tasks.jsonl
+data/relevance/judged-episodes.parquet

@@ -203,3 +203,40 @@ def test_invalid_split_order_rejected(tmp_path) -> None:
 def test_normalize_query() -> None:
     assert normalize_query("Ep. 12 — AI & You!") == "ep 12 ai you"
     assert normalize_query("   ") == ""
+
+
+def test_llm_query_generator_mixes_hard_popular_and_random_negatives(tmp_path) -> None:
+    root = write_snapshot(tmp_path, n_episodes=60)
+    queries = [{"episode_id": i, "query_text": f"how do i learn about topic {i}", "language": "en",
+                "model": "test"} for i in (1, 2, 3, 4)]
+    (root / "queries.jsonl").write_text("".join(json.dumps(q) + "\n" for q in queries))
+    # Mined hard negatives for episodes 1-3 (episode 4 has none -> random fill).
+    mined = {1: [7, 8, 9, 10], 2: [11, 12], 3: [13, 1]}
+    (root / "negatives.jsonl").write_text("".join(
+        json.dumps({"episode_id": e, "hard": [{"episode_id": h, "sources": []} for h in hs]}) + "\n"
+        for e, hs in mined.items()
+    ))
+    config = make_config(
+        negatives_per_example=6,
+        generators=(GeneratorSpec(type="llm_query", queries_file="queries.jsonl",
+                                  negatives_file="negatives.jsonl", hard_negatives=2,
+                                  popular_negatives=2, label_strength=0.5),),
+        validation={"min_examples": 1, "min_distinct_positives": 1,
+                    "min_negatives_per_example": 1, "max_synthetic_share": 1.0},
+    )
+    out_dir, manifest = build_dataset(config, root, tmp_path / "out")
+    rows = pd.concat(
+        [load_examples(out_dir / f"{s}.parquet") for s in ("train", "validation", "test")]
+    )
+    rows = rows.set_index("positive_episode_id")
+    assert sorted(rows.index) == [1, 2, 3, 4]
+    assert rows.loc[1, "query_text"] == "how do i learn about topic 1"
+    assert rows.loc[1, "label_source"] == "synthetic_query" and rows.loc[1, "label_strength"] == 0.5
+    negs = {i: [int(n) for n in rows.loc[i, "negative_episode_ids"]] for i in (1, 2, 3, 4)}
+    assert all(len(n) == 6 and i not in n and len(set(n)) == 6 for i, n in negs.items())
+    assert set(negs[1][:2]) <= {7, 8, 9, 10}       # two hard negatives first
+    assert negs[2][:2] == [11, 12] or negs[2][:2] == [12, 11]
+    assert 3 not in negs[3] and negs[3][0] in (13, 1)  # hard list minus nothing, positive excluded
+    assert set(manifest["inputs"]) == {"queries.jsonl", "negatives.jsonl"}
+    _, again = build_dataset(config, root, tmp_path / "out2")
+    assert again["dataset_version"] == manifest["dataset_version"]

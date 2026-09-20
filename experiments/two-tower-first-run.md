@@ -106,7 +106,10 @@ baseline:
   scored by dot product, no ANN): two-tower-v2 NDCG@10 0.790 / MRR 0.878,
   the same model with its residual heads disabled 0.805 / 0.888, pretrained
   E5 0.850 / 0.918. The fine-tuned model ranks judged episodes 6 points
-  below E5, not 60.
+  below E5, not 60. (On the extended pool below, which includes the
+  fine-tuned model's own low-graded candidates, the same re-ranking gives
+  0.587 / 0.745 against 0.832 / 0.911 for E5 — a harder pool that tracks
+  the full-catalog gap and is now the validation signal training uses.)
 - **No hubness**: across all 180 queries the fine-tuned index returned
   1,769 distinct episodes in 1,800 top-10 slots (E5: 1,771), and no episode
   appeared more than four times.
@@ -119,7 +122,8 @@ rubric, then the affected systems were re-evaluated on the extended pool:
 |---|---|---|---|---|---|---|---|---|---|
 | vector-e5-small | **0.207** | 0.444 | 0.498 | 0.933 | **0.891** | **0.707** | 0.97 | 0.484 | 125 / 456 |
 | two-tower-v2 | 0.095 | 0.351 | 0.374 | 0.733 | 0.594 | 0.413 | 1.00 | 0.646 | 81 / 250 |
-| hybrid-rrf-two-tower-v2 | 0.141 | **0.486** | **0.646** | **0.944** | 0.748 | 0.546 | 0.98 | 0.568 | 329 / 3,587 |
+| hybrid-rrf-two-tower-v2 | 0.141 | 0.486 | 0.646 | 0.944 | 0.748 | 0.546 | 0.98 | 0.568 | 329 / 3,587 |
+| hybrid-rrf (E5 leg) | 0.202 | **0.642** | **0.712** | **0.967** | 0.875 | 0.698 | 0.98 | 0.485 | 355 / 3,647 |
 
 180 queries are scored now (the extended pool gave the last query a
 relevant document). Every recall figure fell for E5 relative to the earlier
@@ -135,6 +139,7 @@ NDCG@10 by query type on the extended pool:
 | vector-e5-small | **0.942** | **0.589** | **0.669** | **0.600** |
 | two-tower-v2 | 0.444 | 0.162 | 0.385 | 0.586 |
 | hybrid-rrf-two-tower-v2 | 0.716 | 0.513 | 0.488 | 0.512 |
+| hybrid-rrf (E5 leg) | 0.915 | 0.741 | 0.652 | 0.534 |
 
 Recall@100 by relevant-item cohort:
 
@@ -142,43 +147,106 @@ Recall@100 by relevant-item cohort:
 |---|---|---|---|---|
 | vector-e5-small | 0.268 | 0.550 | 0.514 | 0.507 |
 | two-tower-v2 | 0.204 | 0.398 | 0.296 | 0.409 |
-| hybrid-rrf-two-tower-v2 | **0.886** | **0.590** | **0.605** | **0.654** |
+| hybrid-rrf-two-tower-v2 | **0.886** | 0.590 | 0.605 | 0.654 |
+| hybrid-rrf (E5 leg) | 0.861 | **0.687** | **0.760** | **0.688** |
+
+## Run 3: `two-tower-v3` — natural queries, hard negatives, pool-selected checkpoint
+
+Config [experiments/training/two-tower-v3.json](training/two-tower-v3.json),
+dataset `search-retrieval-llm-1.0.0` (18,451 training examples), artifact
+`two-tower-llm-v3-1.0.0-d52b7c3b104f-62d87868`. Everything run 2 diagnosed
+was changed at once, so this run measures the package, not the parts:
+
+- **Queries written by an LLM, not copied titles.** 19,991 sampled episodes
+  (all catalog languages) each got one search a listener wanting that
+  episode might type — a question, a topic, a name plus subject — written
+  by `gpt-5.1` from the show, title, and description
+  (`ml/datasets/llm_queries.py`). The category-name examples are gone.
+- **Hard negatives.** For every query the top-50 from pretrained vector and
+  lexical search, minus the positive and its own show
+  (`ml/hard_negatives/mine.py`); each example trains against 4 of them, 2
+  popularity-weighted episodes, and 2 random ones.
+- **Checkpoint selection on the judged pool.** Every 200 steps the model
+  re-ranks each relevance-set query's judged candidates; the best
+  checkpoint by pool NDCG@10 is the one saved (step 200 of 576: 0.798,
+  against 0.789 at the end and 0.832 for pretrained E5).
+- **Distillation and a smaller head learning rate.** `1 - cos` against the
+  frozen pretrained encoder on both towers (weight 0.5); heads at 1e-4.
+- **Effective batch 32** (8 queries × 4 accumulation steps, 72 candidates
+  per micro-batch).
+
+Candidate-set accuracy no longer saturates (0.90–0.95 through the epoch):
+the hard negatives made the training task informative. Its candidates were
+pooled (top 50; 6,828 new pairs judged, 31,330 judgments in total) and the
+systems below were scored on that pool:
+
+| system | R@10 | R@50 | R@100 | Hit@10 | MRR | NDCG@10 | judged share | tail cov. | p50 / p95 ms |
+|---|---|---|---|---|---|---|---|---|---|
+| vector-e5-small | **0.139** | 0.348 | 0.420 | 0.933 | **0.891** | **0.693** | 0.97 | 0.484 | 162 / 440 |
+| two-tower-v3 | 0.131 | **0.486** | 0.544 | 0.906 | 0.819 | 0.632 | 1.00 | **0.574** | **17 / 39** |
+| hybrid-rrf-two-tower-v3 | 0.127 | 0.461 | **0.670** | 0.956 | 0.877 | 0.652 | 0.98 | 0.531 | 257 / 6,135 |
+| hybrid-rrf (E5 leg) | 0.135 | 0.460 | 0.547 | **0.967** | 0.875 | 0.684 | 0.98 | 0.485 | 510 / 6,272 |
+
+NDCG@10 by query type:
+
+| system | navigational | entity | exploratory | filtered |
+|---|---|---|---|---|
+| vector-e5-small | **0.942** | 0.589 | 0.641 | **0.595** |
+| two-tower-v3 | 0.705 | 0.391 | **0.689** | 0.550 |
+| hybrid-rrf-two-tower-v3 | 0.798 | 0.618 | 0.652 | 0.500 |
+| hybrid-rrf (E5 leg) | 0.914 | **0.741** | 0.625 | 0.532 |
+
+Recall@100 by relevant-item cohort:
+
+| system | transcript | no transcript | head | tail |
+|---|---|---|---|---|
+| vector-e5-small | 0.260 | 0.441 | 0.419 | 0.399 |
+| two-tower-v3 | 0.413 | 0.573 | 0.552 | 0.627 |
+| hybrid-rrf-two-tower-v3 | **0.862** | **0.650** | **0.693** | **0.714** |
+| hybrid-rrf (E5 leg) | 0.756 | 0.515 | 0.561 | 0.498 |
 
 ## What this establishes
 
-- **The fine-tuned model does not beat the pretrained baseline.** On the
-  extended pool two-tower-v2 reaches NDCG@10 0.413 against 0.707 for
-  E5, MRR 0.594 against 0.891. The gap is real, not an artifact: the same
-  model re-ranks the judged pool within six NDCG points of E5, and its
-  full-catalog score tripled once its own candidates were judged, but what
-  remains is a candidate-generation gap over 797k episodes.
-- **Where it lost.** Navigational (0.444 vs 0.942) and entity (0.162 vs
-  0.589) queries, where exact show and person names decide relevance.
-  Training pairs were episode titles and category names against random
-  negatives: candidate-set accuracy was 100% by step 200 of 6,358 and the
-  rest of the epoch could only sharpen title matching and let the residual
-  heads grow. Filtered queries, where hard predicates do most of the work,
-  are nearly level (0.586 vs 0.600).
-- **Random negatives are the limiting factor.** They never force the model
-  to separate topically close episodes, which is the whole task at depth
-  10–100 of a large catalog. This is the case the design anticipated;
-  hard-negative mining is the next experiment, and this run is its
-  control.
-- **Fusion still helps recall.** hybrid-rrf-two-tower-v2 leads Recall@100
-  (0.646) and hit rate (0.944) and is the strongest system on the
-  transcript cohort (0.886), because the lexical leg covers what the vector
-  legs miss; its ordering (NDCG@10 0.546) sits between its parents.
+- **Bootstrap labels alone lose to the pretrained baseline (run 2).**
+  Trained on episode titles and category names against random negatives,
+  two-tower-v2 reached NDCG@10 0.413 against 0.707 for E5. Candidate-set
+  accuracy was 100% by step 200 of 6,358; the rest of the epoch could only
+  sharpen title matching, and the model lost most on navigational and
+  entity queries, where exact names decide relevance.
+- **Real-shaped queries and hard negatives recover most of it (run 3).**
+  two-tower-v3 reaches NDCG@10 0.632 against 0.693 for E5 on the same
+  pool — still behind on top-10 ordering and MRR, and behind by a wide
+  margin on navigational (0.705 vs 0.942) and entity (0.391 vs 0.589)
+  queries, where the fine-tuned encoder has traded exact-name matching for
+  topical generalization.
+- **Where it already wins.** Deep recall, which is a first-stage
+  retriever's job: Recall@50 0.486 vs 0.348 and Recall@100 0.544 vs
+  0.420, with higher tail coverage (0.574 vs 0.484) and better recall on
+  every relevant-item cohort. On exploratory queries it is the best
+  standalone system (NDCG@10 0.689 vs 0.641), and its query tower answers
+  in 17 ms at p50 against 162 ms for the sentence-transformers baseline.
+- **Fusion favors it.** As the vector leg of hybrid RRF it delivers
+  Recall@100 0.670 and the best recall on every cohort, including 0.862 on
+  the transcript cohort; the hybrid's ordering (0.652) sits between its
+  legs. The E5 hybrid re-run on this pool keeps the best top-10 ordering of any system (NDCG@10 0.684, hit rate 0.967) but trails the v3 hybrid on Recall@100 (0.547 vs 0.670) and on every cohort.
 - **Two evaluation lessons paid for in full.** A training-serving skew in a
   single structured feature turned a working model into noise (run 1), and
   pooled judgments silently penalize any system that retrieves new
   episodes (run 2 before pooling). Both are now guarded: the featurizer is
   shared and fingerprinted, `judged_share_at_10` is reported by the
-  harness, and pooling a new system's candidates before scoring it is part
-  of the evaluation procedure.
-- **Decision.** The pretrained E5 index stays the vector leg of hybrid
-  retrieval. The registered candidate for hard-negative mining is
-  two-tower-v2 (its configuration and artifact are the starting point);
-  no fine-tuned model is promoted.
+  harness, pooling a new system's candidates before scoring it is part of
+  the evaluation procedure, and training validates on the judged pool
+  rather than on its own candidate set.
+- **Decision.** No fine-tuned model is promoted: the acceptance gate is
+  beating the pretrained baseline on the primary top-10 metrics, and
+  two-tower-v3 does not. The E5 index stays the vector leg of hybrid
+  retrieval. two-tower-v3 is registered as the candidate retriever: it is
+  the better candidate generator (deep recall, tail, exploratory intent),
+  and the next experiments are (1) fusing it as a *third* leg alongside E5
+  and lexical, so its recall adds to E5's name matching instead of
+  replacing it, and (2) a second mining round using v3 itself as the
+  miner, with name-bearing queries over-sampled to recover navigational
+  and entity performance.
 
 ## Operational notes
 

@@ -97,7 +97,7 @@ One config per retrieval system, in `experiments/eval/`:
 {
   "system": "two-tower",
   "system_options": {
-    "artifact": "data/models/two-tower-bootstrap-v2-1.2.0-e2e0bf0793e6-67868919"
+    "artifact": "data/models/two-tower-llm-v3-1.0.0-d52b7c3b104f-62d87868"
   },
   "ks": [10, 50, 100],
   "min_relevant_grade": 2,

@@ -259,3 +259,59 @@ def test_sync_run_copies_params_metric_history_and_artifacts(tmp_path) -> None:
     history = client.get_metric_history(copied_id, "train_loss")
     assert [(m.step, m.value) for m in history] == [(0, 1.0), (1, 0.5), (2, 1 / 3)]
     assert [a.path for a in client.list_artifacts(copied_id)] == ["artifact.json"]
+
+
+def test_pool_validation_distillation_and_accumulation(tmp_path, snapshot, featurizer) -> None:
+    from ml.evaluation.pool_rerank import evaluate_pool, load_pool
+
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    train_ids = list(range(1, 13))
+    make_examples(train_ids, {i: [i + 12] for i in train_ids}).to_parquet(
+        dataset_dir / "train.parquet", index=False
+    )
+    make_examples([26, 27], {26: [1], 27: [2]}).to_parquet(
+        dataset_dir / "validation.parquet", index=False
+    )
+    (dataset_dir / "manifest.json").write_text(json.dumps({
+        "name": "test-dataset", "dataset_version": "1.0.0-test",
+        "content_hash": "abc", "snapshot_id": "snaptest12345",
+    }))
+    # A judged pool over fixture episodes: two queries, graded candidates.
+    pool_dir = tmp_path / "relevance"
+    pool_dir.mkdir()
+    pool_queries = [
+        {"query_id": "q1", "query_text": "topic number 1", "query_type": "entity"},
+        {"query_id": "q2", "query_text": "topic number 5", "query_type": "entity"},
+    ]
+    (pool_dir / "queries.jsonl").write_text("".join(json.dumps(q) + "\n" for q in pool_queries))
+    (pool_dir / "qrels.txt").write_text("q1 0 1 3\nq1 0 2 0\nq1 0 3 1\nq2 0 5 2\nq2 0 6 0\n")
+    rows = load_episode_rows(snapshot, {1, 2, 3, 5, 6})
+    pd.DataFrame(list(rows.values())).to_parquet(pool_dir / "judged-episodes.parquet", index=False)
+    queries, qrels, judged = load_pool(pool_dir)
+    assert len(judged) == 5 and set(qrels) == {"q1", "q2"}
+
+    config = TrainConfig(
+        name="pool", dataset_dir=str(dataset_dir), snapshot=str(snapshot),
+        output_dir=str(tmp_path / "models"), intended_use="unit test only",
+        batch_size=2, negatives_per_example=1, max_steps=2, accumulate_steps=2,
+        log_every=1, eval_every=1, eval_batches=1, warmup_steps=1, seed=3,
+        distill_weight=0.5, pool_validation_dir=str(pool_dir),
+    )
+    torch.manual_seed(0)
+    model = TwoTowerModel(TwoTowerConfig(embedding_dim=32, hidden_dim=16, dropout=0.0),
+                          featurizer.contract, tiny_backbone())
+    teacher = TwoTowerModel(TwoTowerConfig(embedding_dim=32, hidden_dim=16, dropout=0.0),
+                            featurizer.contract, tiny_backbone())
+    out_dir, metadata = train(config, model=model, featurizer=featurizer, use_mlflow=False,
+                              device="cpu", teacher=teacher)
+    assert metadata["steps"] == 2  # 4 micro-batches of 2 rows, accumulated in pairs
+    assert metadata["selected_checkpoint"] == "best"
+    assert metadata["best_step"] in (1, 2)
+    assert 0.0 <= metadata["metrics"]["pool_ndcg_at_10"] <= 1.0
+    assert metadata["metrics"]["pool_queries"] == 2
+    assert metadata["best_pool_ndcg_at_10"] == metadata["metrics"]["best_pool_ndcg_at_10"]
+    # The saved weights are the best checkpoint's: re-scoring them reproduces its pool score.
+    saved = TwoTowerModel.load(out_dir).eval()
+    rescored = evaluate_pool(saved, Featurizer.load(out_dir), queries, qrels, judged)
+    assert rescored["pool_ndcg_at_10"] == metadata["best_pool_ndcg_at_10"]

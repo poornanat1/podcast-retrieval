@@ -51,15 +51,18 @@ filters; a graded relevance set with an evaluation harness (Recall@K, MRR,
 NDCG, cohort coverage, latency) logging to MLflow and a checked-in baseline
 report; a deterministic dataset pipeline publishing versioned,
 honestly-labeled training snapshots; and a two-tower retrieval model with a
-shared training/serving feature contract, a resumable training loop, and a
-versioned vector index per trained model. The first fine-tuned runs are
-written up in [experiments/two-tower-first-run.md](experiments/two-tower-first-run.md):
-trained on bootstrap labels alone they trail the pretrained embedding
-baseline, which stays in place.
+shared training/serving feature contract, a resumable training loop with
+judged-pool validation, LLM-written training queries with mined hard
+negatives, and a versioned vector index per trained model. The first three
+fine-tuned runs are written up in
+[experiments/two-tower-first-run.md](experiments/two-tower-first-run.md):
+the latest beats the pretrained baseline on deep recall and exploratory
+queries but not yet on top-10 ordering, so the pretrained index stays in
+place and the fine-tuned model is the registered candidate.
 
-**Ahead:** hard-negative mining, the learned reranker, voice capture with
-speech-robustness evaluation, the public search API, and production
-deployment with drift monitoring.
+**Ahead:** three-leg fusion and a second mining round, the learned
+reranker, voice capture with speech-robustness evaluation, the public
+search API, and production deployment with drift monitoring.
 
 ## Development
 

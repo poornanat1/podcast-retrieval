@@ -189,6 +189,23 @@ seeded log-uniform delay so every age bucket is trained;
 context so the query tower's language embeddings are trained. Both are
 recorded in the artifact's training config.
 
+**Validation on the judged pool**: with `pool_validation_dir` set, every
+validation pass re-ranks each relevance-set query's judged candidates with
+the model (`ml/evaluation/pool_rerank.py`, minutes, no index needed) and
+reports `pool_ndcg_at_10` / `pool_mrr`; the checkpoint with the best pool
+NDCG@10 is the one saved as final (`selected_checkpoint`, `best_step` in
+the artifact). The candidate-set accuracy alone saturates within a few
+hundred steps and cannot select a checkpoint. `make pool-export` writes the
+judged episodes' rows to `data/relevance/judged-episodes.parquet` so this
+runs with the database stopped.
+
+**Distillation and accumulation**: `distill_weight` adds
+`1 - cos(student, teacher)` on both towers against the frozen pretrained
+text model (the E5 baseline, which the untrained model equals), so
+fine-tuning cannot drift far from the baseline it must beat;
+`accumulate_steps` accumulates gradients over micro-batches for a larger
+effective batch at no extra memory.
+
 **Checkpoints and resume**: every validation pass saves the artifact plus
 optimizer and scheduler state (`training_state.pt`); `--resume` continues
 from it with the same config and data order, and the loop also saves on
