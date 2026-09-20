@@ -8,6 +8,11 @@ judgments comparable.
 
     uv run python -m ml.relevance.pool --systems lexical-fts,popularity-global \
         --out data/relevance/tasks.jsonl --top-k 20
+
+Learned systems take their artifact through ``--system-options``, a JSON
+object keyed by system name, e.g.
+``{"two-tower": {"artifact": "data/models/<run>"}}``; the values are the
+same ``system_options`` an eval config uses.
 """
 
 from __future__ import annotations
@@ -50,6 +55,13 @@ def pool_query(conn: psycopg.Connection, systems: list, query: dict, top_k: int)
     return out
 
 
+def parse_system_options(raw: str) -> dict[str, dict]:
+    options = json.loads(raw or "{}")
+    if not isinstance(options, dict) or not all(isinstance(v, dict) for v in options.values()):
+        raise ValueError("--system-options must be a JSON object of name -> options object")
+    return options
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--queries", default="data/relevance/queries.jsonl")
@@ -57,16 +69,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--top-k", type=int, default=20)
     parser.add_argument("--systems", default="lexical-fts",
                         help="comma-separated retrieval systems to pool from")
+    parser.add_argument("--system-options", default="{}",
+                        help="JSON object: system name -> constructor options")
     parser.add_argument(
         "--database-url", default=os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
     )
     args = parser.parse_args(argv)
 
     queries = [json.loads(line) for line in Path(args.queries).read_text().splitlines()]
+    options = parse_system_options(args.system_options)
     tasks: list[dict] = []
     empty = 0
     with psycopg.connect(args.database_url) as conn:
-        systems = [build_system(name.strip(), conn) for name in args.systems.split(",")]
+        systems = [
+            build_system(name.strip(), conn, options.get(name.strip()))
+            for name in args.systems.split(",")
+        ]
         for query in queries:
             rows = pool_query(conn, systems, query, args.top_k)
             if not rows:

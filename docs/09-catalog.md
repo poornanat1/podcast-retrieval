@@ -40,6 +40,15 @@ docker compose run --rm catalog-worker -oneshot -discover "machine learning"
 > corpus fixed at 795,533 episodes while baselines are compared. Resume
 > ingestion with `docker compose start catalog-worker`; re-freeze the same
 > way, and record the new date and episode count here and in the data card.
+>
+> **Deviation (2026-09-18):** a `docker compose up -d` restarted the worker
+> for about a minute before it was stopped again. It added 1,683 episodes
+> and 2 podcasts and refreshed metadata (and therefore the pretrained
+> vectors) of 8,976 existing episodes, leaving 797,216 episodes / 1,790
+> podcasts. Evaluations from that date re-run every baseline on this
+> corpus rather than reusing the earlier numbers. Restarting the stack
+> starts the worker: stop it again immediately, or start only the
+> services you need (`docker compose up -d postgres mlflow minio`).
 
 ### Adaptive Polling Schedule
 

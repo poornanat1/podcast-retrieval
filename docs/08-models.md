@@ -94,6 +94,14 @@ fingerprint.
 `TwoTowerModel.load(dir)` and `Featurizer.load(dir)` rebuild both halves
 from the directory alone.
 
+**Versioned index**: `make index ARTIFACT=<dir>` runs the episode tower
+over the live catalog (`ml/embeddings/two_tower_index.py`) and upserts the
+vectors under `two-tower:<artifact name>` in `episode_embeddings`, with a
+partial HNSW index per artifact; `index.json` records the build. The
+`two-tower` retrieval system and the `hybrid-rrf` two-tower leg then read
+that index, so `make eval` compares a trained model against the baselines
+on identical catalog rows.
+
 **Measured** (laptop, Apple GPU, batch 64, untrained weights): ~216
 episodes/s through the full episode tower including the transcript pass;
 featurization ~5,000 rows/s. The median episode fills the 256-token
@@ -161,11 +169,30 @@ the category name as query), is never treated as a negative.
 
 **Optimization**: AdamW with a small learning rate for the pretrained
 encoder and a larger one for the new heads and embeddings, linear warmup
-then linear decay, gradient clipping. Gradient checkpointing on the encoder
-is on by default: each step encodes a batch of queries plus several hundred
-256-token candidates, and recomputing activations in the backward pass is
-what makes that fit a laptop GPU's memory. Label strength can optionally
-weight examples (`weight_by_label_strength`).
+then linear decay, gradient clipping. `trainable_encoder_layers` fine-tunes
+only the top N encoder layers (token embeddings and lower layers frozen),
+which removes most optimizer state and activation memory. Gradient
+checkpointing on the encoder is on by default: each step encodes a batch of
+queries plus several hundred 256-token candidates, and recomputing
+activations in the backward pass is what makes that fit a laptop GPU's
+memory. Label strength can optionally weight examples
+(`weight_by_label_strength`).
+
+**Training-time feature augmentation** (`ExampleBatcher`): bootstrap labels
+put the event at publication time, so without intervention the model only
+ever sees "just published" and the publication-age embeddings the index
+actually uses stay untrained — the first fine-tuned run failed exactly this
+way (see [experiments/two-tower-first-run.md](../experiments/two-tower-first-run.md)).
+`age_jitter_days` moves each example's age reference time forward by a
+seeded log-uniform delay so every age bucket is trained;
+`query_language_prob` attaches the positive's language to the query as
+context so the query tower's language embeddings are trained. Both are
+recorded in the artifact's training config.
+
+**Checkpoints and resume**: every validation pass saves the artifact plus
+optimizer and scheduler state (`training_state.pt`); `--resume` continues
+from it with the same config and data order, and the loop also saves on
+interrupt (SIGTERM or Ctrl-C).
 
 **Logged to MLflow** (`two-tower-training`): dataset version, snapshot id,
 config and contract fingerprints, code revision, every model and training

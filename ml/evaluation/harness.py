@@ -15,6 +15,11 @@ Metric conventions:
   share of results from podcasts outside the head set (a supplied set of
   head podcast ids — the project uses the top decile by episode count as a
   popularity proxy until real play data exists).
+- ``judged_share_at_10`` is the share of a system's top-10 results that have
+  any judgment at all. Judgments are pooled from specific systems, and a
+  system whose results were never pooled is scored against "unjudged means
+  irrelevant"; a low judged share says the pool must be extended before its
+  numbers mean anything.
 """
 
 from __future__ import annotations
@@ -49,7 +54,7 @@ def _aggregate(rows: list[dict], ks: list[int]) -> dict[str, float]:
         return {}
     out: dict[str, float] = {}
     keys = [f"recall_at_{k}" for k in ks] + [f"hit_rate_at_{k}" for k in ks]
-    keys += ["mrr", "ndcg_at_10"]
+    keys += ["mrr", "ndcg_at_10", "judged_share_at_10"]
     for key in keys:
         out[key] = round(sum(r[key] for r in rows) / len(rows), 4)
     return out
@@ -126,6 +131,9 @@ def evaluate(
             "latency_ms": round(elapsed_ms, 2),
             "mrr": metrics.reciprocal_rank(ranked, relevant),
             "ndcg_at_10": round(metrics.ndcg_at_k(ranked, grades, 10), 4),
+            "judged_share_at_10": round(
+                sum(1 for e in ranked[:10] if e in grades) / max(min(len(ranked), 10), 1), 4
+            ),
         }
         for k in ks:
             row[f"recall_at_{k}"] = round(metrics.recall_at_k(ranked, relevant, k), 4)

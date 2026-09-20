@@ -41,13 +41,20 @@ def rrf_merge(
 
 
 class HybridRRF:
-    """Lexical + vector candidates, RRF-merged."""
+    """Lexical + vector candidates, RRF-merged. The vector leg is the
+    pretrained baseline unless a two-tower ``vector_artifact`` is given."""
 
     name = "hybrid-rrf"
 
-    def __init__(self, conn: psycopg.Connection):
+    def __init__(self, conn: psycopg.Connection, vector_artifact: str | None = None):
         self.lexical = LexicalSearch(conn)
-        self.vector = VectorSearch(conn)
+        if vector_artifact:
+            from ml.retrieval.two_tower import TwoTowerSearch
+
+            self.vector = TwoTowerSearch(conn, vector_artifact)
+            self.name = "hybrid-rrf-two-tower"
+        else:
+            self.vector = VectorSearch(conn)
 
     def search(self, query: dict, k: int) -> list[int]:
         depth = max(CANDIDATE_DEPTH, k)

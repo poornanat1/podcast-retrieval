@@ -1,0 +1,29 @@
+{
+  "name": "search-retrieval-bootstrap",
+  "base_version": "1.2.0",
+  "seed": 20260826,
+  "negatives_per_example": 4,
+  "validation_start": "2026-06-01T00:00:00+00:00",
+  "test_start": "2026-07-15T00:00:00+00:00",
+  "generators": [
+    {
+      "type": "synthetic_query",
+      "language_prefix": "",
+      "max_examples": 40000,
+      "label_strength": 0.3
+    },
+    {
+      "type": "topic_similarity",
+      "language_prefix": "",
+      "max_examples": 15000,
+      "max_per_category": 400,
+      "label_strength": 0.2
+    }
+  ],
+  "validation": {
+    "min_examples": 1000,
+    "min_distinct_positives": 500,
+    "min_negatives_per_example": 1,
+    "max_weak_share": 0.5
+  }
+}

@@ -91,41 +91,35 @@ p99 = np.percentile(latencies, 99)  # 99% of queries are faster
 
 ### Configuration
 
+One config per retrieval system, in `experiments/eval/`:
+
 ```json
 {
-  "name": "hybrid-rrf-v1",
-  "description": "Hybrid RRF retrieval with e5-small embeddings",
-  "dataset": "search-bootstrap-v1",
-  "relevance": "relevance-pool-v1",
-  "methods": [
-    {
-      "name": "lexical-fts",
-      "type": "lexical",
-      "config": {
-        "language": "english"
-      }
-    },
-    {
-      "name": "vector-e5-small",
-      "type": "vector",
-      "config": {
-        "model": "intfloat/multilingual-e5-small",
-        "dimension": 384
-      }
-    },
-    {
-      "name": "hybrid-rrf",
-      "type": "hybrid",
-      "config": {
-        "lexical_retriever": "lexical-fts",
-        "vector_retriever": "vector-e5-small",
-        "rrf_k": 60
-      }
-    }
-  ],
-  "metrics": ["recall@1", "recall@5", "recall@10", "mrr", "ndcg@10", "coverage", "latency"]
+  "system": "two-tower",
+  "system_options": {
+    "artifact": "data/models/two-tower-bootstrap-v2-1.2.0-e2e0bf0793e6-67868919"
+  },
+  "ks": [10, 50, 100],
+  "min_relevant_grade": 2,
+  "relevance_dir": "data/relevance",
+  "head_podcast_share": 0.1,
+  "mlflow_experiment": "retrieval-eval"
 }
 ```
+
+Alongside recall, hit rate, MRR, NDCG, coverage, and latency, the harness
+reports `judged_share_at_10`: the share of a system's top-10 results that
+carry any judgment. Judgments are pooled from named systems, so a system
+whose results were never pooled scores near zero on it and its other
+metrics are meaningless until its candidates are pooled and judged (see
+[data/relevance/README.md](../data/relevance/README.md)).
+
+`system` names a registered retrieval system (`lexical-fts`,
+`popularity-global`, `popularity-category`, `vector-e5-small`, `two-tower`,
+`hybrid-rrf`); `system_options` are passed to its constructor — the model
+artifact for `two-tower`, or `vector_artifact` to give `hybrid-rrf` a
+two-tower vector leg. `ks` sets the recall / hit-rate cutoffs and
+`min_relevant_grade` the binary-relevance threshold.
 
 ### Evaluation Script
 

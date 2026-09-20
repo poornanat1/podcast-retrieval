@@ -1,7 +1,8 @@
 """Retrieval systems evaluated by the offline harness.
 
 Every system exposes ``name`` and ``search(query, k) -> list[int]``; the
-registry maps config names to constructors over a database connection.
+registry maps config names to constructors over a database connection plus
+optional keyword options from the eval config.
 """
 
 from __future__ import annotations
@@ -9,10 +10,13 @@ from __future__ import annotations
 import psycopg
 
 
-def build_system(name: str, conn: psycopg.Connection):
+def build_system(name: str, conn: psycopg.Connection, options: dict | None = None):
+    """``options`` (an eval config's ``system_options``) are passed to the
+    system's constructor — e.g. the model artifact for learned systems."""
     from ml.retrieval.hybrid import HybridRRF
     from ml.retrieval.lexical import LexicalSearch
     from ml.retrieval.popularity import CategoryPopularity, GlobalPopularity
+    from ml.retrieval.two_tower import TwoTowerSearch
     from ml.retrieval.vector import VectorSearch
 
     registry = {
@@ -20,11 +24,12 @@ def build_system(name: str, conn: psycopg.Connection):
         GlobalPopularity.name: GlobalPopularity,
         CategoryPopularity.name: CategoryPopularity,
         VectorSearch.name: VectorSearch,
+        TwoTowerSearch.name: TwoTowerSearch,
         HybridRRF.name: HybridRRF,
     }
     if name not in registry:
         raise ValueError(f"unknown retrieval system {name!r}; known: {sorted(registry)}")
-    return registry[name](conn)
+    return registry[name](conn, **(options or {}))
 
 
 def fetch_episode_rows(conn: psycopg.Connection, episode_ids: list[int]) -> list[dict]:

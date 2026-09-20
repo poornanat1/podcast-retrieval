@@ -71,6 +71,7 @@ make relevance-judge # LLM-assisted relevance labeling
 make eval            # Evaluate a single config
 make eval-all        # Evaluate all configs in experiments/eval/
 make train           # Train the two-tower model from a config
+make index           # Build a two-tower artifact's episode vector index
 
 make embed           # Embed all episodes with vectors
 ```
@@ -84,8 +85,10 @@ ml/                      # Python: ML pipeline
 │   ├── snapshot.py      # Create snapshots
 │   ├── build.py         # Build datasets from snapshots
 │   └── __init__.py
-├── embeddings/          # Embedding models
-│   ├── embed.py         # Batch embed episodes
+├── embeddings/          # Embedding jobs
+│   ├── embed.py         # Batch embed episodes (pretrained baseline)
+│   ├── two_tower_index.py # Versioned index from a two-tower artifact
+│   ├── text.py          # E5 passage / query text
 │   └── __init__.py
 ├── evaluation/          # Evaluation harness
 │   ├── run.py           # Run evaluation
@@ -108,7 +111,8 @@ ml/                      # Python: ML pipeline
 │   └── __init__.py
 ├── retrieval/           # Search implementations
 │   ├── lexical.py       # BM25 search
-│   ├── vector.py        # Vector search
+│   ├── vector.py        # Vector search (pretrained baseline)
+│   ├── two_tower.py     # Vector search with a two-tower artifact
 │   ├── hybrid.py        # RRF hybrid search
 │   └── __init__.py
 ├── training/            # Two-tower training

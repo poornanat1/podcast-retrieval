@@ -110,3 +110,19 @@ def test_harness_end_to_end() -> None:
     # Language grouping defaults to "en" when queries carry no language.
     assert set(report.by_query_language) == {"en"}
     assert report.by_query_language["en"]["queries"] == 2
+
+
+def test_judged_share_counts_any_judgment_in_top_10() -> None:
+    from ml.evaluation.harness import evaluate
+
+    class Fixed:
+        name = "fixed"
+
+        def search(self, query, k):
+            return [1, 2, 3, 4]
+
+    queries = [{"query_id": "q", "query_type": "entity"}]
+    # 1 relevant, 2 judged irrelevant, 3 and 4 unjudged -> 2 of 4 judged.
+    report = evaluate(Fixed(), queries, {"q": {1: 3, 2: 0}}, ks=[10])
+    assert report.per_query[0]["judged_share_at_10"] == 0.5
+    assert report.global_metrics["judged_share_at_10"] == 0.5

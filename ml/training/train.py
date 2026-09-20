@@ -19,6 +19,7 @@ import hashlib
 import json
 import math
 import os
+import signal
 import sys
 import time
 from datetime import UTC, datetime
@@ -51,10 +52,19 @@ class TrainConfig:
     contract: dict[str, Any] = dataclasses.field(default_factory=dict)  # from_catalog kwargs
     batch_size: int = 64
     negatives_per_example: int = 4
+    # Training-time feature augmentation (see ExampleBatcher): jitter the
+    # publication-age reference time so every age bucket is trained, and
+    # attach the positive's language to the query with this probability.
+    age_jitter_days: float = 0.0
+    query_language_prob: float = 0.0
     epochs: int = 1
     max_steps: int = 0  # 0 = full epochs
     encoder_lr: float = 2e-5
     head_lr: float = 1e-3
+    # Fine-tune only the top N encoder layers (0 = all). Freezing the token
+    # embeddings and lower layers removes their activations and optimizer
+    # state from memory and keeps the pretrained lexical representation.
+    trainable_encoder_layers: int = 0
     weight_decay: float = 0.01
     warmup_steps: int = 100
     max_grad_norm: float = 1.0
@@ -66,6 +76,10 @@ class TrainConfig:
     log_every: int = 10
     eval_every: int = 200
     eval_batches: int = 20
+    # Save the artifact (plus optimizer and scheduler state) at every
+    # validation pass and on interrupt, so a killed run still yields its
+    # latest model and can be resumed with ``--resume``.
+    checkpoint: bool = True
     mlflow_experiment: str = "two-tower-training"
 
     @classmethod
@@ -87,19 +101,45 @@ def pick_device() -> str:
     return "cpu"
 
 
+def _backbones(model: TwoTowerModel) -> list[nn.Module]:
+    seen: dict[int, nn.Module] = {}
+    for tower in (model.query_tower, model.episode_tower):
+        backbone = getattr(getattr(tower, "encoder", None), "backbone", None)
+        if backbone is not None:
+            seen.setdefault(id(backbone), backbone)
+    return list(seen.values())
+
+
+def freeze_lower_encoder(model: TwoTowerModel, trainable_layers: int) -> int:
+    """Freeze token embeddings and all but the top ``trainable_layers``
+    transformer layers of each backbone; returns the number frozen."""
+    frozen = 0
+    if trainable_layers <= 0:
+        return frozen
+    for backbone in _backbones(model):
+        layers = backbone.encoder.layer
+        keep = set(range(max(len(layers) - trainable_layers, 0), len(layers)))
+        for p in backbone.embeddings.parameters():
+            p.requires_grad_(False)
+        for i, layer in enumerate(layers):
+            if i not in keep:
+                frozen += 1
+                for p in layer.parameters():
+                    p.requires_grad_(False)
+    return frozen
+
+
 def build_optimizer(model: TwoTowerModel, config: TrainConfig) -> torch.optim.Optimizer:
     """Small learning rate for the pretrained encoder(s), larger for the
-    freshly initialized heads and embeddings."""
+    freshly initialized heads and embeddings. Frozen parameters are left out."""
     encoder_params = {
-        id(p): p for tower in (model.query_tower, model.episode_tower)
-        if hasattr(tower, "encoder") for p in tower.encoder.parameters()
+        id(p): p for backbone in _backbones(model) for p in backbone.parameters()
     }
-    head_params = [p for p in model.parameters() if id(p) not in encoder_params]
+    trainable = [p for p in model.parameters() if p.requires_grad]
+    encoder = [p for p in trainable if id(p) in encoder_params]
+    heads = [p for p in trainable if id(p) not in encoder_params]
     return torch.optim.AdamW(
-        [
-            {"params": list(encoder_params.values()), "lr": config.encoder_lr},
-            {"params": head_params, "lr": config.head_lr},
-        ],
+        [{"params": encoder, "lr": config.encoder_lr}, {"params": heads, "lr": config.head_lr}],
         weight_decay=config.weight_decay,
     )
 
@@ -166,16 +206,21 @@ def build_contract(snapshot_dir: Path, overrides: dict[str, Any]) -> FeatureCont
     return FeatureContract.from_catalog(episodes["language"], podcasts["categories"], **overrides)
 
 
+TRAINING_STATE_FILENAME = "training_state.pt"
+
+
 def train(
     config: TrainConfig,
     model: TwoTowerModel | None = None,
     featurizer: Featurizer | None = None,
     use_mlflow: bool = True,
     device: str | None = None,
+    resume: bool = False,
 ) -> tuple[Path, dict[str, Any]]:
     """Run one training job; returns the artifact directory and its metadata.
     ``model``/``featurizer`` are injectable for tests; by default both come
-    from the contract's pretrained text model."""
+    from the contract's pretrained text model. ``resume`` continues from the
+    artifact directory's last checkpoint (same config, same data order)."""
     torch.manual_seed(config.seed)
     device = device or pick_device()
     started = time.time()
@@ -192,15 +237,36 @@ def train(
 
     train_df = load_examples(dataset_dir / "train.parquet")
     validation_df = load_examples(dataset_dir / "validation.parquet")
-    if config.max_steps:
-        # Smoke runs: only load the rows the steps can touch.
-        train_df = train_df.iloc[: config.max_steps * config.batch_size]
+    if config.max_steps and config.max_steps * config.batch_size < len(train_df):
+        # Capped runs train on a seeded random subset of the split (a prefix
+        # would be all of one generator's examples); the rest is never loaded.
+        train_df = train_df.sample(
+            n=config.max_steps * config.batch_size, random_state=config.seed
+        ).sort_values("example_id")
     referenced: set[int] = set()
     for df in (train_df, validation_df):
         referenced.update(int(i) for i in df["positive_episode_id"])
         for negs in df["negative_episode_ids"]:
             referenced.update(int(n) for n in list(negs)[: config.negatives_per_example])
     episode_rows = load_episode_rows(snapshot_dir, referenced)
+
+    run_id = f"{config.name}-{manifest['dataset_version']}-{config.sha256()[:8]}"
+    out_dir = Path(config.output_dir) / run_id
+    resume_state = None
+    if resume and (out_dir / TRAINING_STATE_FILENAME).exists():
+        resume_state = torch.load(out_dir / TRAINING_STATE_FILENAME, map_location="cpu",
+                                  weights_only=True)
+        if resume_state["training_config_sha256"] != config.sha256():
+            raise SystemExit(f"checkpoint in {out_dir} was trained with a different config")
+        if featurizer is None:
+            featurizer = Featurizer.load(out_dir)
+        if model is None:
+            model = TwoTowerModel.load(out_dir)
+        else:
+            model.load_state_dict(torch.load(out_dir / "weights.pt", map_location="cpu",
+                                             weights_only=True))
+        print(json.dumps({"resumed_from": resume_state["step"], "artifact": str(out_dir)}),
+              flush=True)
 
     if featurizer is None:
         featurizer = Featurizer.from_contract(build_contract(snapshot_dir, config.contract))
@@ -209,12 +275,20 @@ def train(
         model = TwoTowerModel.from_pretrained_text(contract, TwoTowerConfig(**config.model))
     model = model.to(device)
     model.train()
+    frozen_layers = freeze_lower_encoder(model, config.trainable_encoder_layers)
     if config.gradient_checkpointing:
         enable_gradient_checkpointing(model)
 
-    train_batcher = ExampleBatcher(train_df, episode_rows, featurizer, config.negatives_per_example)
+    augmentation = {
+        "age_jitter_days": config.age_jitter_days,
+        "query_language_prob": config.query_language_prob,
+        "seed": config.seed,
+    }
+    train_batcher = ExampleBatcher(
+        train_df, episode_rows, featurizer, config.negatives_per_example, **augmentation
+    )
     val_batcher = ExampleBatcher(
-        validation_df, episode_rows, featurizer, config.negatives_per_example
+        validation_df, episode_rows, featurizer, config.negatives_per_example, **augmentation
     )
     steps_per_epoch = math.ceil(len(train_batcher) / config.batch_size)
     total_steps = config.max_steps or steps_per_epoch * config.epochs
@@ -223,6 +297,9 @@ def train(
     scheduler = torch.optim.lr_scheduler.LambdaLR(
         optimizer, lr_lambda(total_steps, min(config.warmup_steps, total_steps // 10))
     )
+    if resume_state is not None:
+        optimizer.load_state_dict(resume_state["optimizer"])
+        scheduler.load_state_dict(resume_state["scheduler"])
 
     mlflow = None
     if use_mlflow:
@@ -239,6 +316,8 @@ def train(
             "device": device,
             "total_steps": total_steps,
             "train_rows": len(train_batcher),
+            "frozen_encoder_layers": frozen_layers,
+            **{f"parameters_{k}": v for k, v in model.parameter_counts().items()},
             **{f"train_{k}": v for k, v in dataclasses.asdict(config).items()
                if not isinstance(v, dict)},
             **{f"model_{k}": v for k, v in dataclasses.asdict(model.config).items()},
@@ -248,86 +327,124 @@ def train(
     def log_metrics(values: dict[str, float], step: int) -> None:
         print(json.dumps({"step": step, **values}), flush=True)
         if mlflow is not None:
-            mlflow.log_metrics(values, step=step)
+            # Asynchronous so a slow tracking server never blocks the loop.
+            mlflow.log_metrics(values, step=step, synchronous=False)
 
-    step = 0
-    last_train: dict[str, float] = {}
-    validation: dict[str, float] = {}
+    state = {"step": 0, "epoch": 0, "train": {}, "validation": {}, "interrupted": False}
+    if resume_state is not None:
+        state["step"] = int(resume_state["step"])
+        state["epoch"] = int(resume_state["epoch"])
+        state["resumed_from"] = state["step"]
+
+    def save_artifact(final: bool) -> dict[str, Any]:
+        metadata = {
+            "name": config.name,
+            "intended_use": config.intended_use,
+            "dataset_version": manifest["dataset_version"],
+            "dataset_content_hash": manifest["content_hash"],
+            "dataset_name": manifest["name"],
+            "snapshot_id": manifest["snapshot_id"],
+            "training_config": dataclasses.asdict(config),
+            "training_config_sha256": config.sha256(),
+            "train_rows": len(train_batcher),
+            "validation_rows": len(val_batcher),
+            "steps": state["step"],
+            "total_steps": total_steps,
+            "epochs_completed": round(state["step"] / steps_per_epoch, 4),
+            "final": final,
+            "interrupted": state["interrupted"],
+            "resumed_from": state.get("resumed_from"),
+            "device": device,
+            "seconds": round(time.time() - started, 1),
+            "metrics": {**state["train"], **state["validation"]},
+            "finished_at": datetime.now(UTC).isoformat(),
+        }
+        if mlflow is not None:
+            metadata["mlflow_run_id"] = mlflow.active_run().info.run_id
+        model.save(out_dir, featurizer, metadata)
+        torch.save(
+            {
+                "step": state["step"],
+                "epoch": state["epoch"],
+                "training_config_sha256": config.sha256(),
+                "optimizer": optimizer.state_dict(),
+                "scheduler": scheduler.state_dict(),
+            },
+            out_dir / TRAINING_STATE_FILENAME,
+        )
+        print(json.dumps({"step": state["step"], "checkpoint": str(out_dir), "final": final}),
+              flush=True)
+        return metadata
+
+    def validate() -> None:
+        state["validation"] = evaluate_split(model, val_batcher, config, device)
+        log_metrics(state["validation"], state["step"])
+        if device == "mps":
+            torch.mps.empty_cache()
+
     running: dict[str, float] = {"loss": 0.0, "accuracy": 0.0, "mrr": 0.0, "n": 0.0}
-    done = False
     window_started = time.time()
-    for epoch in range(config.epochs):
-        for batch in train_batcher.batches(config.batch_size, shuffle=True,
-                                           seed=config.seed + epoch):
-            loss, diag = step_loss(model, batch.to(device), config.weight_by_label_strength)
-            optimizer.zero_grad(set_to_none=True)
-            loss.backward()
-            nn.utils.clip_grad_norm_(model.parameters(), config.max_grad_norm)
-            optimizer.step()
-            scheduler.step()
-            step += 1
+    try:
+        for epoch in range(state["epoch"], config.epochs):
+            state["epoch"] = epoch
+            skip = max(state["step"] - epoch * steps_per_epoch, 0)
+            for batch in train_batcher.batches(config.batch_size, shuffle=True,
+                                               seed=config.seed + epoch, skip=skip):
+                loss, diag = step_loss(model, batch.to(device), config.weight_by_label_strength)
+                optimizer.zero_grad(set_to_none=True)
+                loss.backward()
+                nn.utils.clip_grad_norm_(model.parameters(), config.max_grad_norm)
+                optimizer.step()
+                scheduler.step()
+                step = state["step"] = state["step"] + 1
+                if device == "mps" and step % 25 == 0:
+                    torch.mps.empty_cache()  # return cached blocks to the OS
 
-            running["loss"] += loss.item()
-            running["accuracy"] += diag["accuracy"]
-            running["mrr"] += diag["mrr"]
-            running["n"] += 1
-            if step % config.log_every == 0 or step == total_steps:
-                n = running["n"]
-                last_train = {
-                    "train_loss": round(running["loss"] / n, 4),
-                    "train_accuracy": round(running["accuracy"] / n, 4),
-                    "train_mrr": round(running["mrr"] / n, 4),
-                    "encoder_lr": scheduler.get_last_lr()[0],
-                    "seconds_per_step": round((time.time() - window_started) / n, 2),
-                    "epoch": epoch,
-                }
-                log_metrics(last_train, step)
-                running = {"loss": 0.0, "accuracy": 0.0, "mrr": 0.0, "n": 0.0}
-                window_started = time.time()
-            if config.eval_every and step % config.eval_every == 0 and step != total_steps:
-                validation = evaluate_split(model, val_batcher, config, device)
-                log_metrics(validation, step)
-            if step >= total_steps:
-                done = True
+                running["loss"] += loss.item()
+                running["accuracy"] += diag["accuracy"]
+                running["mrr"] += diag["mrr"]
+                running["n"] += 1
+                if step % config.log_every == 0 or step == total_steps:
+                    n = running["n"]
+                    state["train"] = {
+                        "train_loss": round(running["loss"] / n, 4),
+                        "train_accuracy": round(running["accuracy"] / n, 4),
+                        "train_mrr": round(running["mrr"] / n, 4),
+                        "encoder_lr": scheduler.get_last_lr()[0],
+                        "seconds_per_step": round((time.time() - window_started) / n, 2),
+                        "epoch": epoch,
+                    }
+                    log_metrics(state["train"], step)
+                    running = {"loss": 0.0, "accuracy": 0.0, "mrr": 0.0, "n": 0.0}
+                    window_started = time.time()
+                if config.eval_every and step % config.eval_every == 0 and step != total_steps:
+                    validate()
+                    if config.checkpoint:
+                        save_artifact(final=False)
+                if step >= total_steps:
+                    break
+            if state["step"] >= total_steps:
                 break
-        if done:
-            break
+    except KeyboardInterrupt:
+        state["interrupted"] = True
+        print(json.dumps({"step": state["step"], "interrupted": True}), flush=True)
 
-    validation = evaluate_split(model, val_batcher, config, device)
-    log_metrics(validation, step)
-    seconds = round(time.time() - started, 1)
-    metrics = {**last_train, **validation}
-
-    run_id = f"{config.name}-{manifest['dataset_version']}-{config.sha256()[:8]}"
-    metadata = {
-        "name": config.name,
-        "intended_use": config.intended_use,
-        "dataset_version": manifest["dataset_version"],
-        "dataset_content_hash": manifest["content_hash"],
-        "dataset_name": manifest["name"],
-        "snapshot_id": manifest["snapshot_id"],
-        "training_config": dataclasses.asdict(config),
-        "training_config_sha256": config.sha256(),
-        "train_rows": len(train_batcher),
-        "validation_rows": len(val_batcher),
-        "steps": step,
-        "epochs_completed": step / steps_per_epoch,
-        "device": device,
-        "seconds": seconds,
-        "metrics": metrics,
-        "finished_at": datetime.now(UTC).isoformat(),
-    }
+    validate()
+    metadata = save_artifact(final=True)
     if mlflow is not None:
-        metadata["mlflow_run_id"] = mlflow.active_run().info.run_id
-    out_dir = model.cpu().save(Path(config.output_dir) / run_id, featurizer, metadata)
-    if mlflow is not None:
+        mlflow.flush_async_logging()
         mlflow.log_dict(json.loads((out_dir / "artifact.json").read_text()), "artifact.json")
         mlflow.log_param("artifact_dir", str(out_dir))
-        mlflow.end_run()
+        mlflow.end_run(status="FAILED" if state["interrupted"] else "FINISHED")
     return out_dir, metadata
 
 
+def _raise_interrupt(signum, frame) -> None:  # noqa: ARG001
+    raise KeyboardInterrupt
+
+
 def main(argv: list[str] | None = None) -> int:
+    signal.signal(signal.SIGTERM, _raise_interrupt)
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--config", required=True)
     parser.add_argument("--max-steps", type=int, default=None, help="override for smoke runs")
@@ -335,13 +452,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--device", default=None)
     parser.add_argument("--no-mlflow", action="store_true")
+    parser.add_argument("--resume", action="store_true",
+                        help="continue from the artifact's last checkpoint if one exists")
     args = parser.parse_args(argv)
 
     config = TrainConfig.load(
         args.config, max_steps=args.max_steps, batch_size=args.batch_size,
         output_dir=args.output_dir,
     )
-    out_dir, metadata = train(config, use_mlflow=not args.no_mlflow, device=args.device)
+    out_dir, metadata = train(config, use_mlflow=not args.no_mlflow, device=args.device,
+                              resume=args.resume)
     print(json.dumps({k: metadata[k] for k in
                       ("dataset_version", "steps", "seconds", "metrics")}, indent=2))
     print(f"artifact written to {out_dir}")

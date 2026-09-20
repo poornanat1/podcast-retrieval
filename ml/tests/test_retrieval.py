@@ -53,3 +53,27 @@ def test_e5_text_preparation() -> None:
     long_passage = build_passage("P", "E", "x" * 5000)
     assert len(long_passage) < 1100
     assert build_query("  practical ai  ") == "query: practical ai"
+
+
+def test_registry_passes_system_options() -> None:
+    # Options reach the constructor: a learned system without its artifact
+    # fails at artifact loading, and unknown options are rejected.
+    with pytest.raises(FileNotFoundError):
+        build_system("two-tower", conn=None, options={"artifact": "/nonexistent/artifact"})
+    with pytest.raises(TypeError):
+        build_system("lexical-fts", conn=None, options={"bogus": 1})
+
+
+def test_two_tower_index_naming() -> None:
+    from ml.embeddings.embed import index_name
+    from ml.embeddings.two_tower_index import model_id_for_artifact, rows_to_episodes
+
+    model_id = model_id_for_artifact("data/models/two-tower-bootstrap-1.1.0-abc-0123beef")
+    assert model_id == "two-tower:two-tower-bootstrap-1.1.0-abc-0123beef"
+    assert index_name(model_id) == (
+        "episode_embeddings_hnsw_two_tower_two_tower_bootstrap_1_1_0_abc_0123beef"
+    )
+    episodes = rows_to_episodes([
+        (1, 7, "Ep", "desc", "en", 60, None, "h", "Show", "Pub", ["News"], ""),
+    ])
+    assert episodes[0]["podcast_title"] == "Show" and episodes[0]["categories"] == ["News"]

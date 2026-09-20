@@ -22,5 +22,5 @@ def tiny_backbone():
 
     return BertModel(BertConfig(
         vocab_size=len(VOCAB), hidden_size=32, num_hidden_layers=1, num_attention_heads=2,
-        intermediate_size=64, max_position_embeddings=128, pad_token_id=0,
+        intermediate_size=64, max_position_embeddings=512, pad_token_id=0,
     ))

@@ -1,0 +1,39 @@
+{
+  "name": "two-tower-bootstrap-v2",
+  "intended_use": "First-stage semantic candidate retrieval over the podcast episode catalog, replacing the pretrained-embedding ANN baseline if it beats it on the relevance set. Trained on multilingual synthetic title queries and weak topic labels only, without transcripts (the training snapshot predates transcript excerpts), with publication-age jitter and query-language augmentation so index-time features match training; not for ranking or for personalized retrieval.",
+  "dataset_dir": "data/datasets/search-retrieval-bootstrap-1.2.0-e2e0bf0793e6",
+  "snapshot": "data/snapshots",
+  "output_dir": "data/models",
+  "seed": 20260826,
+  "model": {
+    "embedding_dim": 384,
+    "hidden_dim": 512,
+    "dropout": 0.1,
+    "temperature": 0.05,
+    "share_text_encoder": true,
+    "use_transcript": false,
+    "use_structured": true,
+    "podcast_id_buckets": 0
+  },
+  "contract": {
+    "min_language_count": 100,
+    "min_category_count": 3
+  },
+  "batch_size": 8,
+  "negatives_per_example": 4,
+  "epochs": 1,
+  "encoder_lr": 2e-05,
+  "head_lr": 0.001,
+  "weight_decay": 0.01,
+  "warmup_steps": 100,
+  "max_grad_norm": 1.0,
+  "weight_by_label_strength": false,
+  "log_every": 10,
+  "eval_every": 200,
+  "eval_batches": 10,
+  "mlflow_experiment": "two-tower-training",
+  "max_steps": 0,
+  "trainable_encoder_layers": 6,
+  "age_jitter_days": 3650,
+  "query_language_prob": 0.5
+}

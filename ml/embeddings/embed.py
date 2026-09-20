@@ -29,7 +29,8 @@ PENDING_SQL = """
     JOIN podcasts p ON p.id = e.podcast_id
     LEFT JOIN episode_embeddings emb
            ON emb.episode_id = e.id AND emb.model = %(model)s
-    WHERE emb.episode_id IS NULL OR emb.content_hash <> e.content_hash
+    WHERE e.id > %(after)s
+      AND (emb.episode_id IS NULL OR emb.content_hash <> e.content_hash)
     ORDER BY e.id
     LIMIT %(batch)s
 """
@@ -95,6 +96,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     embedded = 0
+    after = 0  # keyset cursor: each batch scans forward from the last id
     started = time.time()
     with psycopg.connect(args.database_url) as conn:
         register_vector(conn)
@@ -102,10 +104,12 @@ def main(argv: list[str] | None = None) -> int:
             if args.limit and embedded >= args.limit:
                 break
             with conn.cursor() as cur:
-                cur.execute(PENDING_SQL, {"model": args.model, "batch": args.batch_size})
+                cur.execute(PENDING_SQL, {"model": args.model, "batch": args.batch_size,
+                                          "after": after})
                 rows = cur.fetchall()
             if not rows:
                 break
+            after = rows[-1][0]
 
             passages = [build_passage(r[4], r[1], r[2]) or "passage: " for r in rows]
             vectors = model.encode(

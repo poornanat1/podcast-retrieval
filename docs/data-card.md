@@ -16,6 +16,10 @@ sources:
    2026-09-13 with the catalog at 1,788 podcasts and 795,533 episodes, so
    every retrieval system is evaluated against the same fixed corpus.
    Judgments and metrics dated after 2026-09-13 assume this frozen state.
+   On 2026-09-18 the worker briefly ran again (see
+   [09-catalog.md](09-catalog.md)): 1,683 episodes and 2 podcasts were
+   added and 8,976 episodes' metadata refreshed, so comparisons from that
+   date use a 797,216-episode corpus and re-run every baseline on it.
 2. **Publisher transcripts** — plain-text/SRT/VTT/JSON transcripts linked
    from feeds (~11% episode coverage at the current catalog size).
 3. **Interaction events** — not yet collected; the schema exists and label
@@ -39,7 +43,7 @@ expected pre-launch and reported honestly in every manifest.
 
 ## Evaluation ground truth
 
-The relevance set (`data/relevance/`) contains 180 queries and ~8.9k graded
+The relevance set (`data/relevance/`) contains 180 queries and ~24.5k graded
 judgments over candidates pooled from every retrieval system under
 comparison. Judgments are currently
 LLM-generated (`judge: llm:<model>`), each with a rationale; human review

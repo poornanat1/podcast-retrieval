@@ -26,6 +26,28 @@ LIMIT %(top_k)s
 """
 
 
+def enable_iterative_scan(conn: psycopg.Connection) -> None:
+    """Iterative scanning (pgvector >= 0.8) keeps filtered ANN queries
+    scanning until LIMIT is satisfied instead of returning short."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SET hnsw.iterative_scan = relaxed_order")
+            cur.execute("SET hnsw.ef_search = 200")
+        conn.commit()
+    except psycopg.Error:
+        conn.rollback()
+
+
+def filter_params(query: dict) -> dict:
+    """Structured-filter bind parameters for ``SEARCH_SQL``."""
+    return {
+        "lang": query.get("language") or "",
+        "max_duration": int(query.get("max_duration_seconds") or 0),
+        "published_after": query.get("published_after") or "",
+        "no_explicit": bool(query.get("no_explicit")),
+    }
+
+
 class VectorSearch:
     """Pretrained-embedding ANN retrieval (multilingual E5 small)."""
 
@@ -37,29 +59,13 @@ class VectorSearch:
         self.conn = conn
         register_vector(conn)
         self.model = SentenceTransformer(MODEL_ID)
-        # Iterative scanning (pgvector >= 0.8) keeps filtered ANN queries
-        # scanning until LIMIT is satisfied instead of returning short.
-        try:
-            with conn.cursor() as cur:
-                cur.execute("SET hnsw.iterative_scan = relaxed_order")
-                cur.execute("SET hnsw.ef_search = 200")
-            conn.commit()
-        except psycopg.Error:
-            conn.rollback()
+        enable_iterative_scan(conn)
 
     def search(self, query: dict, k: int) -> list[int]:
         vector = self.model.encode(
             build_query(query["query_text"]), normalize_embeddings=True
         )
-        params = {
-            "model": MODEL_ID,
-            "qvec": vector,
-            "lang": query.get("language") or "",
-            "max_duration": int(query.get("max_duration_seconds") or 0),
-            "published_after": query.get("published_after") or "",
-            "no_explicit": bool(query.get("no_explicit")),
-            "top_k": k,
-        }
+        params = {"model": MODEL_ID, "qvec": vector, **filter_params(query), "top_k": k}
         with self.conn.cursor() as cur:
             cur.execute(SEARCH_SQL, params)
             return [row[0] for row in cur.fetchall()]

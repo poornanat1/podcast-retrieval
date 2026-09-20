@@ -32,7 +32,7 @@ Technology split: Python owns the ML lifecycle (datasets, training, evaluation, 
 
 - **Catalog:** ~1,800 shows, ~800k episodes, ~87k transcripts with adaptive feed polling (evaluation corpus frozen at 795,533 episodes on 2026-09-13)
 - **Search:** Weighted multilingual full-text search with hard structured filters
-- **Relevance:** Graded relevance set (180 queries, ~8.9k LLM-graded judgments with human override) with evaluation harness (Recall@K, MRR, NDCG, coverage, latency)
+- **Relevance:** Graded relevance set (180 queries, ~24.5k LLM-graded judgments with human override, pooled from every retrieval system under comparison) with evaluation harness (Recall@K, MRR, NDCG, coverage, latency)
 - **Data:** Deterministic dataset pipeline publishing versioned, honestly-labeled training snapshots
 
 ### What's Ahead

@@ -86,9 +86,14 @@ Embed each query in real-time with caching.
 
 Stored in the `episode_embeddings` table (`vector(384)`), keyed by
 `(episode_id, model)` with the episode's content hash at embed time:
-- 384 dimensions from multilingual-e5-small
+- 384 dimensions from multilingual-e5-small, and from each fine-tuned
+  two-tower artifact (`model = two-tower:<artifact name>`, built by
+  `make index`, which also writes `index.json` next to the artifact with
+  the build time, contract fingerprint, and vector count)
 - Partial HNSW index per model, created by the embed job
 - Normalized for cosine similarity; re-embedding triggers on content change
+- Two-tower vectors compute publication age against the index build time,
+  so an index that is not rebuilt drifts from the features the model saw
 
 ### Distance Functions
 

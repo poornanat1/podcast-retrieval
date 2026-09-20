@@ -13,7 +13,7 @@ from ml.tests.helpers import tiny_backbone, tiny_tokenizer
 from ml.tests.test_build import write_snapshot
 from ml.training.data import ExampleBatcher, load_episode_rows
 from ml.training.loss import candidate_mask, contrastive_softmax_loss
-from ml.training.train import TrainConfig, build_optimizer, train
+from ml.training.train import TrainConfig, build_optimizer, freeze_lower_encoder, train
 
 
 def test_candidate_mask_blocks_duplicate_and_sibling_positives() -> None:
@@ -108,6 +108,28 @@ def test_batcher_collates_positives_then_negatives(snapshot, featurizer) -> None
         ExampleBatcher(make_examples([1, 2, 31], {}), rows, featurizer, 2)
 
 
+def test_batcher_augmentation_is_seeded(snapshot, featurizer) -> None:
+    examples = make_examples([1, 2, 3, 4, 5, 6], {})
+    rows = load_episode_rows(snapshot, {1, 2, 3, 4, 5, 6})
+    plain = ExampleBatcher(examples, rows, featurizer, 0)
+    plain_batch = next(plain.batches(6, shuffle=False))
+    # Fixture episodes were published 21-31 days before the event time.
+    assert set(plain_batch.episodes["age_bucket"].tolist()) <= {2, 3}
+    assert plain_batch.query["language_id"].tolist() == [0] * 6
+
+    jittered = ExampleBatcher(examples, rows, featurizer, 0, age_jitter_days=3 * 365,
+                              query_language_prob=1.0, seed=7)
+    batch = next(jittered.batches(6, shuffle=False))
+    buckets = batch.episodes["age_bucket"].tolist()
+    assert all(1 <= b <= featurizer.contract.num_age_buckets - 1 for b in buckets)
+    assert max(buckets) > 3, "jitter should reach older age buckets"
+    assert len(set(buckets)) > 1, "jitter should spread examples across age buckets"
+    assert batch.query["language_id"].tolist() == [1] * 6  # snapshot rows are "en"
+    again = next(ExampleBatcher(examples, rows, featurizer, 0, age_jitter_days=3 * 365,
+                                query_language_prob=1.0, seed=7).batches(6, shuffle=False))
+    assert again.episodes["age_bucket"].tolist() == buckets  # deterministic per example
+
+
 def test_optimizer_separates_encoder_and_head_learning_rates(featurizer) -> None:
     model = TwoTowerModel(TwoTowerConfig(embedding_dim=32, hidden_dim=16), featurizer.contract,
                           tiny_backbone())
@@ -119,6 +141,17 @@ def test_optimizer_separates_encoder_and_head_learning_rates(featurizer) -> None
     assert n_encoder == sum(p.numel() for p in model.query_tower.encoder.parameters())
     total = sum(p.numel() for p in model.parameters())
     assert n_encoder + sum(p.numel() for p in head_group["params"]) == total
+
+    # Freezing the lower encoder (the tiny backbone has one layer, so
+    # keeping one trainable layer freezes only the embeddings) drops those
+    # parameters from the optimizer.
+    assert freeze_lower_encoder(model, trainable_layers=1) == 0
+    backbone = model.query_tower.encoder.backbone
+    assert not any(p.requires_grad for p in backbone.embeddings.parameters())
+    optimizer = build_optimizer(model, config)
+    n_encoder_trainable = sum(p.numel() for p in optimizer.param_groups[0]["params"])
+    n_embeddings = sum(p.numel() for p in backbone.embeddings.parameters())
+    assert n_encoder_trainable == n_encoder - n_embeddings
 
 
 def test_train_smoke_writes_artifact_with_metadata(tmp_path, snapshot, featurizer) -> None:
@@ -150,6 +183,7 @@ def test_train_smoke_writes_artifact_with_metadata(tmp_path, snapshot, featurize
                               use_mlflow=False, device="cpu")
 
     assert metadata["steps"] == 3
+    assert metadata["final"] is True and metadata["interrupted"] is False
     assert metadata["dataset_version"] == "1.0.0-test"
     for key in ("train_loss", "train_accuracy", "validation_loss", "validation_mrr"):
         assert key in metadata["metrics"] and metadata["metrics"][key] == metadata["metrics"][key]
@@ -166,10 +200,27 @@ def test_train_smoke_writes_artifact_with_metadata(tmp_path, snapshot, featurize
 
     loaded = TwoTowerModel.load(out_dir)
     reloaded = Featurizer.load(out_dir)
+    # Weights match the trained model, not the eval-step checkpoint that was
+    # overwritten by the final save.
     batch = reloaded.query_batch([{"query_text": "topic number 3"}])
     with torch.no_grad():
         assert torch.allclose(loaded.eval().encode_query(batch),
                               model.eval().encode_query(batch), atol=1e-6)
+
+    # Resume: rewind the saved state to step 2 (as if the run had died after
+    # its step-2 checkpoint) and continue with the same config.
+    state_path = out_dir / "training_state.pt"
+    saved = torch.load(state_path, weights_only=True)
+    assert saved["step"] == 3
+    torch.save({**saved, "step": 2}, state_path)
+    _, resumed = train(config, model=model, featurizer=featurizer,
+                       use_mlflow=False, device="cpu", resume=True)
+    assert resumed["steps"] == 3 and resumed["resumed_from"] == 2
+    # A checkpoint written under a different config is refused.
+    torch.save({**saved, "step": 2, "training_config_sha256": "other"}, state_path)
+    with pytest.raises(SystemExit, match="different config"):
+        train(config, model=model, featurizer=featurizer, use_mlflow=False, device="cpu",
+              resume=True)
 
     # A dataset built from a different snapshot is refused.
     (dataset_dir / "manifest.json").write_text(json.dumps({
@@ -178,3 +229,33 @@ def test_train_smoke_writes_artifact_with_metadata(tmp_path, snapshot, featurize
     }))
     with pytest.raises(SystemExit, match="built from snapshot"):
         train(config, model=model, featurizer=featurizer, use_mlflow=False, device="cpu")
+
+
+def test_sync_run_copies_params_metric_history_and_artifacts(tmp_path) -> None:
+    import mlflow
+
+    from ml.training.sync_run import sync_run
+
+    source = f"sqlite:///{tmp_path / 'src.db'}"
+    target = f"sqlite:///{tmp_path / 'dst.db'}"
+    mlflow.set_tracking_uri(source)
+    mlflow.create_experiment("two-tower-training", artifact_location=str(tmp_path / "src-art"))
+    mlflow.set_experiment("two-tower-training")
+    with mlflow.start_run(run_name="offline") as run:
+        mlflow.log_param("batch_size", 8)
+        for step in range(3):
+            mlflow.log_metric("train_loss", 1.0 / (step + 1), step=step)
+        mlflow.log_dict({"steps": 3}, "artifact.json")
+    mlflow.tracking.MlflowClient(tracking_uri=target).create_experiment(
+        "two-tower-training", artifact_location=str(tmp_path / "dst-art")
+    )
+    copied_id = sync_run(run.info.run_id, source, target)
+
+    client = mlflow.tracking.MlflowClient(tracking_uri=target)
+    copied = client.get_run(copied_id)
+    assert copied.info.run_name == "offline" and copied.info.status == "FINISHED"
+    assert copied.data.params == {"batch_size": "8"}
+    assert copied.data.tags["source_run_id"] == run.info.run_id
+    history = client.get_metric_history(copied_id, "train_loss")
+    assert [(m.step, m.value) for m in history] == [(0, 1.0), (1, 0.5), (2, 1 / 3)]
+    assert [a.path for a in client.list_artifacts(copied_id)] == ["artifact.json"]

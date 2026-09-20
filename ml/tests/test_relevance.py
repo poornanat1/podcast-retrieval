@@ -218,3 +218,13 @@ def test_export_produces_qrels(tmp_path) -> None:
             "--judgments", str(judgments_path),
             "--out", str(out),
         ])
+
+
+def test_pool_system_options_parse() -> None:
+    from ml.relevance.pool import parse_system_options
+
+    assert parse_system_options("") == {}
+    parsed = parse_system_options('{"two-tower": {"artifact": "x"}}')
+    assert parsed == {"two-tower": {"artifact": "x"}}
+    with pytest.raises(ValueError):
+        parse_system_options('{"two-tower": "x"}')

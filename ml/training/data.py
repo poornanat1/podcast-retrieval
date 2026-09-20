@@ -10,11 +10,15 @@ so the loss can use every encoded episode as an in-batch negative.
 from __future__ import annotations
 
 import dataclasses
+import math
 import random
 from collections.abc import Iterator
 from pathlib import Path
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.compute as pc
+import pyarrow.parquet as pq
 import torch
 from torch import Tensor
 
@@ -49,10 +53,17 @@ class Batch:
 
 
 def load_episode_rows(snapshot_dir: str | Path, episode_ids: set[int]) -> dict[int, dict]:
-    """Catalog rows (episode + podcast fields) for the referenced ids only."""
+    """Catalog rows (episode + podcast fields) for the referenced ids only.
+
+    Filters in Arrow before converting to pandas: materializing the whole
+    snapshot (hundreds of thousands of descriptions) in pandas leaves
+    gigabytes resident for the rest of training."""
     snapshot_dir = Path(snapshot_dir)
-    episodes = pd.read_parquet(snapshot_dir / "episodes.parquet")
-    episodes = episodes[episodes["id"].isin(episode_ids)]
+    table = pq.read_table(snapshot_dir / "episodes.parquet")
+    mask = pc.is_in(table["id"], value_set=pa.array(sorted(episode_ids), type=table["id"].type))
+    episodes = table.filter(mask).to_pandas()
+    del table, mask
+    pa.default_memory_pool().release_unused()
     podcasts = pd.read_parquet(snapshot_dir / "podcasts.parquet").rename(
         columns={"id": "podcast_id", "title": "podcast_title", "language": "podcast_language",
                  "explicit": "podcast_explicit"}
@@ -67,12 +78,23 @@ def load_episode_rows(snapshot_dir: str | Path, episode_ids: set[int]) -> dict[i
 
 
 class ExampleBatcher:
+    """``age_jitter_days`` > 0 moves each example's age reference time
+    forward by a per-example, seeded, log-uniform delay of up to that many
+    days. Bootstrap labels put the event at publication time, so without it
+    the model only ever sees "just published" and the age embeddings the
+    index actually uses stay untrained. ``query_language_prob`` attaches the
+    positive's language to the query as context with that probability, so
+    the query tower's language embeddings are trained too."""
+
     def __init__(
         self,
         examples: pd.DataFrame,
         episode_rows: dict[int, dict],
         featurizer: Featurizer,
         negatives_per_example: int,
+        age_jitter_days: float = 0.0,
+        query_language_prob: float = 0.0,
+        seed: int = 0,
     ) -> None:
         missing = set(int(i) for i in examples["positive_episode_id"]) - set(episode_rows)
         if missing:
@@ -81,9 +103,29 @@ class ExampleBatcher:
         self.rows = episode_rows
         self.featurizer = featurizer
         self.negatives_per_example = negatives_per_example
+        self.age_jitter_days = age_jitter_days
+        self.query_language_prob = query_language_prob
+        self.seed = seed
 
     def __len__(self) -> int:
         return len(self.examples)
+
+    def _reference_time(self, example_id: str, event_time):
+        if self.age_jitter_days <= 0:
+            return event_time
+        rng = random.Random(f"{self.seed}:age:{example_id}")
+        # Log-uniform over [1 day, jitter]: every age bucket gets coverage
+        # rather than the last, widest bucket dominating.
+        days = math.exp(rng.uniform(0.0, math.log(max(self.age_jitter_days, 1.0))))
+        return pd.Timestamp(event_time) + pd.Timedelta(days=days)
+
+    def _query(self, example_id: str, query_text: str, positive: dict) -> dict:
+        query = {"query_text": query_text}
+        if self.query_language_prob > 0:
+            rng = random.Random(f"{self.seed}:lang:{example_id}")
+            if rng.random() < self.query_language_prob and positive.get("language"):
+                query["language"] = positive["language"]
+        return query
 
     def collate(self, examples: pd.DataFrame) -> Batch:
         queries, positives, negatives = [], [], []
@@ -92,23 +134,24 @@ class ExampleBatcher:
         key_of: dict[str, int] = {}
         for row in examples.itertuples(index=False):
             key = key_of.setdefault(row.query_text, len(key_of))
-            queries.append({"query_text": row.query_text})
             positive = int(row.positive_episode_id)
+            reference = self._reference_time(row.example_id, row.event_time)
+            queries.append(self._query(row.example_id, row.query_text, self.rows[positive]))
             positives.append(self.rows[positive])
             pos_ids.append(positive)
             cand_ids.append(positive)
-            cand_times.append(row.event_time)
+            cand_times.append(reference)
             query_keys.append(key)
             cand_keys.append(key)
             weights.append(float(row.label_strength))
             chosen = [int(n) for n in row.negative_episode_ids][: self.negatives_per_example]
             for negative in chosen:
                 if negative in self.rows:
-                    negatives.append((self.rows[negative], row.event_time, negative))
-        for row, event_time, negative in negatives:
+                    negatives.append((self.rows[negative], reference, negative))
+        for row, reference, negative in negatives:
             positives.append(row)
             cand_ids.append(negative)
-            cand_times.append(event_time)
+            cand_times.append(reference)
             cand_keys.append(-1)
 
         return Batch(
@@ -122,11 +165,17 @@ class ExampleBatcher:
             weights=torch.tensor(weights, dtype=torch.float32),
         )
 
-    def batches(self, batch_size: int, shuffle: bool, seed: int = 0) -> Iterator[Batch]:
+    def batches(
+        self, batch_size: int, shuffle: bool, seed: int = 0, skip: int = 0
+    ) -> Iterator[Batch]:
+        """``skip`` chunks are passed over without featurization, so a
+        resumed run continues the same shuffled order where it stopped."""
         order = list(range(len(self.examples)))
         if shuffle:
             random.Random(seed).shuffle(order)
-        for start in range(0, len(order), batch_size):
+        for index, start in enumerate(range(0, len(order), batch_size)):
+            if index < skip:
+                continue
             chunk = self.examples.iloc[order[start:start + batch_size]]
             if len(chunk) < 2:
                 continue  # a single query has no in-batch negatives

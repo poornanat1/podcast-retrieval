@@ -48,9 +48,14 @@ def age_days(published_at: object, reference_time: object) -> float | None:
 
 
 class Featurizer:
-    def __init__(self, contract: FeatureContract, tokenizer) -> None:
+    def __init__(self, contract: FeatureContract, tokenizer, pad_to_max: bool = True) -> None:
+        """``pad_to_max`` pads every batch to the contract's token budget
+        instead of the longest row: fixed shapes let GPU allocators reuse
+        buffers across batches (variable shapes fragment the MPS cache
+        badly during training), at a small cost for short batches."""
         self.contract = contract
         self.tokenizer = tokenizer
+        self.pad_to_max = pad_to_max
 
     @classmethod
     def load(cls, directory: str | Path) -> Featurizer:
@@ -78,8 +83,8 @@ class Featurizer:
     def _tokenize(self, texts: list[str], max_tokens: int) -> dict[str, torch.Tensor]:
         # Empty strings still get [CLS]/[SEP]; callers mask them out.
         encoded = self.tokenizer(
-            texts, padding=True, truncation=True, max_length=max_tokens,
-            return_tensors="pt",
+            texts, padding="max_length" if self.pad_to_max else True, truncation=True,
+            max_length=max_tokens, return_tensors="pt",
         )
         return {"input_ids": encoded["input_ids"], "attention_mask": encoded["attention_mask"]}
 

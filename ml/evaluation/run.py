@@ -69,7 +69,7 @@ def run_config(config_path: str | Path, database_url: str, use_mlflow: bool) -> 
         with conn.cursor() as cur:
             cur.execute("SELECT episode_id FROM transcripts")
             episodes_with_transcript = {row[0] for row in cur.fetchall()}
-        system = build_system(config["system"], conn)
+        system = build_system(config["system"], conn, config.get("system_options"))
         report = evaluate(
             system,
             queries,

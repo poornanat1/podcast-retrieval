@@ -33,6 +33,13 @@ PodFind combines lexical (BM25) and vector (embeddings) search via Reciprocal Ra
 
 **Example**: Query "machine learning in healthcare" matches semantically related episodes even without exact words.
 
+**Fine-tuned variant (`two-tower`)**: the same ANN scan over a versioned
+index built from a two-tower model artifact (`make index`), with the
+query encoded by the artifact's query tower in-process. Each artifact's
+vectors live under their own `model` key (`two-tower:<artifact name>`), so
+a trained model and the pretrained baseline are evaluated side by side
+against the same catalog. See [08-models.md](08-models.md).
+
 ### 3. Hybrid Search via Reciprocal Rank Fusion (RRF)
 
 **What it is:** Merges lexical + vector rankings via RRF formula.
@@ -60,6 +67,10 @@ graph LR
 | **Result** | Best of both: exact phrases + semantic understanding |
 
 **Why RRF?** No hyperparameter tuning. Statistically sound. If lexical + vector disagree, item gets boosted score.
+
+The vector leg is the pretrained baseline by default; an eval config can
+swap in a two-tower artifact (`system_options.vector_artifact`), reported
+as `hybrid-rrf-two-tower`.
 
 ## Query Processing Pipeline
 

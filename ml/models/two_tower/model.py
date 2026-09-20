@@ -304,7 +304,11 @@ class TwoTowerModel(nn.Module):
             self.episode_tower.encoder.backbone.config.save_pretrained(
                 directory / EPISODE_BACKBONE_DIR
             )
-        torch.save(self.state_dict(), directory / WEIGHTS_FILENAME)
+        # Copy tensors to the CPU one at a time rather than moving the model:
+        # moving it re-allocates every parameter on the accelerator, which
+        # grows a caching allocator's footprint at each checkpoint.
+        torch.save({k: v.detach().to("cpu") for k, v in self.state_dict().items()},
+                   directory / WEIGHTS_FILENAME)
         if featurizer is not None:
             featurizer.save_tokenizer(directory)
         artifact = {
