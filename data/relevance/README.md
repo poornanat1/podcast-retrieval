@@ -25,8 +25,8 @@ so pooling applies them too).
 Judgments are collected over pooled candidates: each retrieval system
 contributes its top K results per query. The pool has been extended in
 stages — lexical full-text search, the popularity baselines, pretrained
-vector and hybrid retrieval (top 20 each), and the first fine-tuned
-two-tower model (top 50, so its hybrid's candidates are covered too) — into
+vector and hybrid retrieval (top 20 each), and each fine-tuned two-tower
+model (top 50, so its hybrid's candidates are covered too) — into
 the same tasks file so systems are compared on shared judgments. Unjudged
 documents are treated as irrelevant by the eval harness, as is standard for
 pooled evaluation, which is exactly why every new system must be pooled
