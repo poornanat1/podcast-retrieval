@@ -1,118 +1,65 @@
-# PodFind: Overview
+# Overview
 
-**PodFind** is a self-hosted podcast discovery system that makes spoken knowledge findable through voice-aware, semantically-aware search and recommendations.
+PodFind is a podcast search system built end to end: catalog ingestion,
+lexical and vector retrieval, a fine-tuned retrieval model, and offline
+evaluation against a graded relevance set. Python owns the ML lifecycle,
+Go owns ingestion (and, later, serving), PostgreSQL with `pgvector` holds
+all the data.
 
-## Vision & Mission
+## Status
 
-Podcasts hold enormous amounts of knowledge, but discovery is stuck at the show level. The moments worth finding are usually buried inside episodes nobody can name. PodFind's goal is to make that findable—say or type what you want and get the right episodes back, ranked, with constraints treated as guarantees rather than suggestions.
+Built and measured:
 
-### Core Principles
+- **Catalog** — 1,790 shows, ~797k episodes, ~87k publisher transcripts,
+  maintained by a Go worker with adaptive feed polling and daily
+  discovery. The evaluation corpus is held fixed; see
+  [09-catalog.md](09-catalog.md).
+- **Retrieval** — weighted multilingual full-text search, pretrained
+  embedding search (`multilingual-e5-small` in `pgvector`), hybrid
+  reciprocal-rank fusion, and a fine-tuned two-tower model with its own
+  versioned index. [04-retrieval.md](04-retrieval.md)
+- **Relevance set and evaluation** — 180 queries, 31,330 graded judgments
+  pooled from every system, LLM-graded with human override; a harness
+  reporting recall, hit rate, MRR, NDCG, coverage, cohorts, latency, and
+  pool coverage, logging to MLflow. [06-relevance.md](06-relevance.md),
+  [07-evaluation.md](07-evaluation.md)
+- **Datasets and training** — deterministic versioned datasets, a
+  training loop with judged-pool validation, hard-negative mining, and
+  LLM-written training queries. [03-data-pipeline.md](03-data-pipeline.md),
+  [08-models.md](08-models.md)
 
-1. **Search by meaning, not just words.** Hybrid lexical + vector retrieval puts queries, listeners, and episodes in a shared embedding space. Exploratory questions land on relevant episodes even when no title contains the query.
+Not built yet: the public search API and web app, voice input, a learned
+reranker, deployment manifests, and monitoring. Their directories and Go
+entry points are scaffolds.
 
-2. **Voice as a first-class input.** Spoken queries are transcribed, parsed into intent + structured filters (language, duration, recency, explicit content), and evaluated as part of retrieval quality—not a UI garnish.
+## Documents
 
-3. **Recommendations that respect intent.** Personalized retrieval from listening history and "more like this episode" diversity across shows, not just more-of-the-same.
+| Document | Contents |
+|---|---|
+| [01-architecture.md](01-architecture.md) | Components and how data moves between them |
+| [02-tech-stack.md](02-tech-stack.md) | Languages, libraries, and services, and why |
+| [03-data-pipeline.md](03-data-pipeline.md) | Snapshots, dataset builder, raw inputs, versioning |
+| [04-retrieval.md](04-retrieval.md) | Lexical, vector, two-tower, and hybrid retrieval |
+| [05-embeddings.md](05-embeddings.md) | Embedding model choice, batch jobs, vector storage |
+| [06-relevance.md](06-relevance.md) | Queries, pooling, grading, judges |
+| [07-evaluation.md](07-evaluation.md) | Metrics, configs, harness, reproducibility |
+| [08-models.md](08-models.md) | Two-tower model, training loop, artifacts, indexes |
+| [09-catalog.md](09-catalog.md) | Discovery, RSS polling, dedup, transcripts, jobs |
+| [10-database.md](10-database.md) | Schema and migrations |
+| [11-deployment.md](11-deployment.md) | What runs where today |
+| [12-observability.md](12-observability.md) | What is tracked today |
+| [13-development.md](13-development.md) | Setup, Make targets, tests, conventions |
+| [data-card.md](data-card.md) | Data sources, label taxonomy, freeze state |
+| [licensing.md](licensing.md) | Rights and responsibilities for podcast content |
 
-4. **Evidence before complexity.** Every learned component must beat reproducible baselines on a human-auditable relevance set before it ships. Datasets, models, and indexes are versioned and rebuildable bit-for-bit.
-
-5. **Respect for the ecosystem.** Publisher RSS remains the source of truth. Attribution is preserved, audio is never copied, and removal requests are honored.
-
-## Scope
-
-A self-hosted stack:
-- **Data ingestion:** Podcast discovery and RSS ingestion, publisher transcript parsing
-- **Retrieval:** Hybrid lexical + vector retrieval with potential learned reranking
-- **Training:** Interaction-event capture feeding back into training data
-- **Operations:** Versioned model serving with offline evaluation, monitoring, and rollback
-
-Technology split: Python owns the ML lifecycle (datasets, training, evaluation, embeddings); Go owns ingestion and serving; PostgreSQL (with `pgvector`) owns the data.
-
-### What's Working Today
-
-- **Catalog:** ~1,800 shows, ~800k episodes, ~87k transcripts with adaptive feed polling (evaluation corpus frozen at 795,533 episodes on 2026-09-13)
-- **Search:** Weighted multilingual full-text search with hard structured filters
-- **Relevance:** Graded relevance set (180 queries, ~31k LLM-graded judgments with human override, pooled from every retrieval system under comparison) with evaluation harness (Recall@K, MRR, NDCG, coverage, latency)
-- **Data:** Deterministic dataset pipeline publishing versioned, honestly-labeled training snapshots
-
-### What's Ahead
-
-- Pretrained embeddings and two-tower retrieval models
-- Hard-negative mining for training
-- Learned reranking
-- Voice capture with speech-robustness evaluation
-- Public search API and production deployment with drift monitoring
-
-## Reading Guide
-
-This documentation is structured in layers:
-
-| Document | Audience | Purpose |
-|----------|----------|---------|
-| **[01-architecture.md](01-architecture.md)** | All | How the system is organized and what talks to what |
-| **[02-tech-stack.md](02-tech-stack.md)** | All | Technology choices and why |
-| **[03-data-pipeline.md](03-data-pipeline.md)** | ML, Data | Catalog ingestion, snapshots, datasets, versioning |
-| **[04-retrieval.md](04-retrieval.md)** | ML, Backend | Lexical, vector, and hybrid search implementations |
-| **[05-embeddings.md](05-embeddings.md)** | ML | Embedding models, indexing, vector storage |
-| **[06-relevance.md](06-relevance.md)** | ML, Eval | Relevance judgments, human review, LLM annotation |
-| **[07-evaluation.md](07-evaluation.md)** | ML, All | Metrics, experiment configs, eval harness |
-| **[08-models.md](08-models.md)** | ML | ML model definitions, training, export |
-| **[09-catalog.md](09-catalog.md)** | Backend, Data | Podcast catalog, RSS polling, feed management |
-| **[10-database.md](10-database.md)** | Backend, Data | PostgreSQL schema, migrations, queries |
-| **[11-deployment.md](11-deployment.md)** | Backend, DevOps | Docker Compose, Kubernetes, cloud deployment |
-| **[12-observability.md](12-observability.md)** | All | Monitoring, MLflow, dashboards, logging |
-| **[13-development.md](13-development.md)** | All | Development workflow, local setup, running targets |
-
-## Key Directories
+## Layout
 
 ```
-ml/              # Python: datasets, embeddings, models, training, evaluation
-├── datasets/    # Dataset building and snapshots
-├── embeddings/  # Embedding models and inference
-├── evaluation/  # Metrics and eval harness
-├── models/      # ML model definitions
-├── relevance/   # Human relevance judgments and review
-├── retrieval/   # Lexical, vector, and hybrid search
-├── training/    # Model training scripts
-└── tests/       # Python tests
-
-cmd/             # Go: CLI entry points (migrate, server, workers)
-internal/        # Go: core business logic
-├── catalog/     # Podcast catalog and episode management
-├── discovery/   # Feed discovery
-├── jobs/        # Job queue and background workers
-├── rss/         # RSS parsing and polling
-├── transcript/  # Transcript parsing
-└── ...
-
-migrations/      # PostgreSQL schema migrations
-deploy/          # Docker Compose, Helm, OpenShift manifests
-experiments/     # Checked-in experiment configs and reports
-data/            # Snapshots, datasets, relevance judgments
-docs/            # This documentation
+cmd/            catalog-worker, migrate; api and ml-worker are scaffolds
+internal/       catalog, rss, transcript, discovery, particle, jobs, outbox, objstore, migrate, pgtest, version
+migrations/     PostgreSQL schema, applied by `make migrate`
+ml/             datasets, features, models, training, embeddings, hard_negatives, retrieval, relevance, evaluation, tests
+experiments/    datasets/, training/, eval/ configs and the reports
+data/           relevance/ (tracked); snapshots/, datasets/, models/ (local, gitignored)
+deploy/         compose init script; helm/ and openshift/ are placeholders
 ```
-
-## Development Quick Start
-
-```bash
-# Start services (Postgres, MinIO, MLflow, catalog worker)
-docker compose up -d
-
-# Run migrations
-make migrate
-
-# Run all CI checks (lint, test, build)
-make ci
-
-# Build a dataset
-make dataset CONFIG=experiments/datasets/search-bootstrap-v1.json
-
-# Run evaluation
-make eval-all
-```
-
-See [13-development.md](13-development.md) for the full development guide.
-
-## Data Responsibilities
-
-Podcast metadata, artwork, and transcripts delivered over public RSS remain the property of their publishers. PodFind stores only required metadata and artifacts, preserves attribution, and honors feed removal requests. See [../docs/licensing.md](../docs/licensing.md) for details.

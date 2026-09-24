@@ -1,401 +1,85 @@
-# Catalog: Ingestion, RSS Polling & Transcript Parsing
+# Catalog
 
-The catalog worker maintains a self-updating podcast feed, discovering new shows and episodes.
+The catalog worker (`cmd/catalog-worker`, packages under `internal/`)
+keeps a self-maintaining podcast catalog in PostgreSQL: it discovers
+shows, ingests their RSS feeds, deduplicates episodes, parses publisher
+transcripts, and reschedules each feed by how often it publishes.
 
-## Catalog Workflow
-
-```mermaid
-graph LR
-    A["Discovery Source<br/>Particle data platform<br/>(trending + topical search)"] -->|"Add new"| B["Shows<br/>~1,800"]
-    B -->|"Adaptive polling<br/>15m - 24h"| C["Episodes<br/>~800k"]
-    C -->|"Dedup<br/>by GUID"| D["New Episodes"]
-    D -->|"Request transcripts"| E["Transcript Parser"]
-    E -->|"Store"| F["PostgreSQL<br/>Text Index"]
-    
-    style B fill:#e3f2fd
-    style C fill:#e8f5e9
-    style F fill:#f3e5f5
-```
-
-## Discovery: Finding New Shows
-
-**Goal**: Continuously discover new podcast feeds.
-
-**Source**: the [Particle data platform](https://docs.particle.pro) — daily
-trending charts plus topical searches; RSS feed URLs come back with each
-show and remain the authoritative source for episodes.
-
-**Run discovery:**
-```bash
-docker compose run --rm catalog-worker -oneshot -trending 100
+```sh
+docker compose up -d catalog-worker                       # run continuously
+docker compose run --rm catalog-worker -oneshot -seed     # enqueue the standard seeding set and exit
+docker compose run --rm catalog-worker -oneshot -trending 100 -language en
 docker compose run --rm catalog-worker -oneshot -discover "machine learning"
 ```
 
-## RSS Polling: Fetching Episodes
+Environment: `DATABASE_URL`; `PARTICLE_API_KEY` (discovery jobs dead-letter
+without it); `PODFIND_DAILY_TRENDING` (podcasts discovered from the
+trending list per day, default 25, 0 disables).
 
-**Goal:** Periodically fetch new episodes from subscribed feeds.
+## Corpus freeze
 
-> **Corpus freeze (since 2026-09-13):** the catalog worker is intentionally
-> stopped (`docker compose stop catalog-worker`) to hold the evaluation
-> corpus fixed at 795,533 episodes while baselines are compared. Resume
-> ingestion with `docker compose start catalog-worker`; re-freeze the same
-> way, and record the new date and episode count here and in the data card.
+> **Since 2026-09-13** the worker is intentionally stopped
+> (`docker compose stop catalog-worker`) to hold the evaluation corpus
+> fixed while retrieval systems are compared. Resume with
+> `docker compose start catalog-worker`; re-freeze the same way and record
+> the new date and episode count here and in the data card.
 >
 > **Deviation (2026-09-18):** a `docker compose up -d` restarted the worker
 > for about a minute before it was stopped again. It added 1,683 episodes
 > and 2 podcasts and refreshed metadata (and therefore the pretrained
 > vectors) of 8,976 existing episodes, leaving 797,216 episodes / 1,790
 > podcasts. Evaluations from that date re-run every baseline on this
-> corpus rather than reusing the earlier numbers. Restarting the stack
-> starts the worker: stop it again immediately, or start only the
-> services you need (`docker compose up -d postgres mlflow minio`).
+> corpus rather than reusing earlier numbers. Restarting the stack starts
+> the worker: start only the services you need
+> (`docker compose up -d postgres mlflow minio`).
 
-### Adaptive Polling Schedule
+## Discovery
 
-Don't poll all feeds equally; prioritize active shows:
+`internal/discovery` defines a provider-agnostic contract (search by
+query, list trending by language); `internal/particle` implements it for
+the [Particle data platform](https://docs.particle.pro). Providers surface
+shows and their canonical RSS feed URLs; RSS stays the authoritative source
+for episodes. Discovered shows are keyed by `(discovery_source,
+discovery_id)` and by feed URL, and carry the provider's popularity
+percentile (`migrations/0009_podcast_popularity.sql`).
 
-```python
-# Polling interval (hours) based on publish frequency
-if show.episodes_per_week > 3:
-    interval = 4  # Check every 4 hours
-elif show.episodes_per_week > 1:
-    interval = 12  # Check twice daily
-else:
-    interval = 48  # Check every 2 days
-```
+## Polling
 
-### Polling Worker
-
-```go
-// cmd/catalog-worker/main.go
-func pollFeeds(ctx context.Context, db *postgres.DB) error {
-    shows, err := db.ShowsNeedingPoll(ctx)  // Shows not polled in X hours
-    if err != nil {
-        return err
-    }
-    
-    for _, show := range shows {
-        feed, err := fetchRSSFeed(show.RSSURL)
-        if err != nil {
-            log.Warnf("Failed to fetch feed %s: %v", show.RSSURL, err)
-            continue
-        }
-        
-        // Extract episodes
-        episodes := parseEpisodes(feed)
-        
-        // Deduplicate against existing
-        newEpisodes := deduplicateEpisodes(episodes, show.ID, db)
-        
-        // Insert new episodes
-        if err := db.InsertEpisodes(ctx, newEpisodes); err != nil {
-            log.Errorf("Failed to insert episodes for show %d: %v", show.ID, err)
-            continue
-        }
-        
-        // Mark feed as polled
-        db.UpdateShowLastPolled(ctx, show.ID)
-    }
-    
-    return nil
-}
-```
-
-**Run polling:**
-```go
-// Run continuously as background job
-ticker := time.NewTicker(10 * time.Minute)
-for range ticker.C {
-    pollFeeds(ctx, db)
-}
-```
+Each feed's next fetch is derived from the age of its newest episode
+(`internal/catalog/schedule.go`): hourly if it published in the last day,
+every 3 hours within 3 days, 6 hours within a week, 12 hours within a
+month, daily otherwise, never more often than every 15 minutes. Fetches
+are conditional (`ETag` / `Last-Modified`), so unchanged feeds cost one
+request.
 
 ## Deduplication
 
-Episodes can appear multiple times across feeds:
-1. Same episode in multiple podcast feeds (cross-posting)
-2. Same RSS feed URL with different domains
-3. Duplicate episodes (reissues, reruns)
+Episodes are matched in order of trust: RSS GUID, then enclosure URL, then
+a content hash of the searchable fields; unique partial indexes enforce
+the first two per show. `content_hash` also drives incremental
+re-embedding: a vector is recomputed only when the hash changes.
 
-### Dedup Strategy
+## Transcripts
 
-```go
-type EpisodeKey struct {
-    GUID        string  // RSS <guid>
-    EnclosureURL string  // RSS <enclosure url>
-}
+Publisher-provided transcripts linked from the feed (plain text, SRT, VTT,
+podcast-namespace JSON) are normalized to plain text
+(`internal/transcript`), stored one row per episode with the raw file
+retained in object storage, and indexed for full-text search at the lowest
+weight. About 11% of episodes have one. Episodes without transcripts stay
+searchable through their own and their show's metadata.
 
-func deduplicateEpisodes(episodes []RSSItem, showID int64, db *postgres.DB) []Episode {
-    deduped := make([]Episode, 0)
-    seenKeys := make(map[EpisodeKey]bool)
-    
-    // Check against existing episodes
-    for _, item := range episodes {
-        key := EpisodeKey{
-            GUID:        item.GUID,
-            EnclosureURL: item.Enclosure.URL,
-        }
-        
-        // Already seen in this feed
-        if seenKeys[key] {
-            continue
-        }
-        seenKeys[key] = true
-        
-        // Check database
-        existing, _ := db.FindEpisodeByGUID(item.GUID)
-        if existing != nil {
-            continue  // Already in catalog
-        }
-        
-        // New episode
-        deduped = append(deduped, Episode{
-            ShowID:  showID,
-            GUID:    item.GUID,
-            Title:   item.Title,
-            Desc:    item.Description,
-            PubDate: parseDate(item.PubDate),
-            URL:     item.Enclosure.URL,
-        })
-    }
-    
-    return deduped
-}
-```
+## Jobs and events
 
-## RSS Parsing
+All work runs through a PostgreSQL job queue (`internal/jobs`): workers
+claim jobs with `FOR UPDATE SKIP LOCKED` under a lease, retries back off
+exponentially, and jobs that exhaust their attempts are parked in a
+dead-letter state with their last error. Catalog state changes and the
+versioned domain events describing them commit in one transaction through
+the outbox (`internal/outbox`); a worker drains the events asynchronously.
 
-### Feed Format Support
+## Size
 
-- **Apple Podcasts:** Standard RSS with iTunes extensions
-- **Podbean:** Custom extensions for metadata
-- **Transistor, Podpage:** Standard RSS
-- **Transcript sources:** Podtrac, Panoply, Rev, etc.
-
-### Parsing Logic
-
-```go
-// internal/rss/parser.go
-func parseRSSFeed(xmlData []byte) (*Feed, error) {
-    var rss RSSFeed
-    err := xml.Unmarshal(xmlData, &rss)
-    if err != nil {
-        return nil, err
-    }
-    
-    feed := &Feed{
-        Title:       rss.Channel.Title,
-        Description: rss.Channel.Description,
-        Language:    rss.Channel.Language,
-        Category:    rss.Channel.iTunes.Category.Text,
-        Episodes:    make([]Episode, 0),
-    }
-    
-    for _, item := range rss.Channel.Items {
-        ep := Episode{
-            GUID:        item.GUID,
-            Title:       item.Title,
-            Description: item.Description,
-            PubDate:     parseRFC2822(item.PubDate),
-            
-            // iTunes extensions
-            Duration:    parseDuration(item.iTunes.Duration),
-            Explicit:    item.iTunes.Explicit == "yes",
-            
-            // Enclosure (audio file)
-            URL:         item.Enclosure.URL,
-            Type:        item.Enclosure.Type,
-        }
-        
-        feed.Episodes = append(feed.Episodes, ep)
-    }
-    
-    return feed, nil
-}
-```
-
-## Transcript Parsing
-
-### Transcript Sources
-
-- **Podtrac**: XML format, time-aligned
-- **Rev**: VTT (WebVTT) format
-- **Transistor**: Imported transcripts
-- **User-provided**: Upload or link to transcript
-
-### Parsing & Storage
-
-```go
-// internal/transcript/parser.go
-func ParseTranscript(episodeID int64, transcriptURL string) (string, error) {
-    // Fetch transcript
-    resp, err := http.Get(transcriptURL)
-    if err != nil {
-        return "", err
-    }
-    defer resp.Body.Close()
-    
-    // Detect format
-    contentType := resp.Header.Get("Content-Type")
-    
-    var text string
-    switch {
-    case strings.Contains(contentType, "xml"):
-        text, _ = parsePodtracXML(resp.Body)
-    case strings.Contains(contentType, "vtt"):
-        text, _ = parseWebVTT(resp.Body)
-    default:
-        text, _ = parsePlainText(resp.Body)
-    }
-    
-    // Store in PostgreSQL
-    _, err = db.Exec(
-        "UPDATE episodes SET transcript = $1, transcript_source = $2 WHERE id = $3",
-        text, transcriptURL, episodeID,
-    )
-    
-    return text, err
-}
-```
-
-## Catalog Schema
-
-```sql
-CREATE TABLE shows (
-    id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-    title VARCHAR(500) NOT NULL,
-    rss_url VARCHAR(2048) UNIQUE NOT NULL,
-    description TEXT,
-    language VARCHAR(5),
-    category VARCHAR(100),
-    artwork_url VARCHAR(2048),
-    
-    -- Polling
-    last_polled_at TIMESTAMP,
-    polling_interval_hours INT DEFAULT 24,
-    poll_error_count INT DEFAULT 0,
-    
-    -- Metadata
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE episodes (
-    id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-    show_id BIGINT NOT NULL REFERENCES shows(id),
-    guid VARCHAR(1024) UNIQUE NOT NULL,
-    title VARCHAR(500) NOT NULL,
-    description TEXT,
-    transcript TEXT,
-    
-    -- Audio metadata
-    duration_seconds INT,
-    explicit BOOLEAN DEFAULT FALSE,
-    enclosure_url VARCHAR(2048),
-    
-    -- Timestamps
-    published_at TIMESTAMP NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW(),
-    
-    -- Search indices
-    tsv TSVECTOR,
-    embedding vector(384),  -- Filled by embedding worker
-    
-    -- Dedup
-    guid_or_enclosure_url VARCHAR(1024)  -- For fallback dedup
-);
-
--- Indices
-CREATE INDEX ON episodes (show_id, published_at DESC);
-CREATE INDEX ON episodes USING GIN(tsv);  -- Full-text search
-CREATE INDEX ON episodes USING HNSW(embedding);  -- Vector search
-```
-
-## Error Handling & Recovery
-
-### Feed Fetch Failures
-
-```go
-// Retry with exponential backoff
-retries := 0
-maxRetries := 3
-backoff := 5 * time.Second
-
-for retries < maxRetries {
-    err := fetchRSSFeed(feedURL)
-    if err == nil {
-        break
-    }
-    
-    retries++
-    time.Sleep(backoff)
-    backoff *= 2
-}
-
-if retries == maxRetries {
-    // Mark feed as inactive
-    db.InactivateShow(feedID)
-    alertOperator("Feed fetch failed", feedURL)
-}
-```
-
-### Transcript Parsing Failures
-
-```go
-// Log failure but don't block feed updates
-if err := parseTranscript(episodeID, transcriptURL); err != nil {
-    log.Warnf("Failed to parse transcript for episode %d: %v", episodeID, err)
-    
-    // Record error for monitoring
-    db.LogError("transcript_parse", episodeID, err.Error())
-    
-    // Continue with episode (transcript is optional)
-}
-```
-
-## Monitoring & Observability
-
-Track catalog health:
-
-```
-catalog_shows_total{active="true"}  # Currently active shows
-catalog_episodes_total              # Total episodes in catalog
-catalog_poll_duration_seconds       # Time to poll all feeds
-catalog_new_episodes_daily          # New episodes discovered
-catalog_transcript_coverage         # % episodes with transcripts
-catalog_poll_errors_total           # Failed polls
-catalog_dedup_rate                  # Ratio of duplicates to unique
-```
-
-See [12-observability.md](12-observability.md) for monitoring setup.
-
-## Maintenance Tasks
-
-### Cleanup
-
-```bash
-# Remove inactive shows (no new episodes in 1 year)
-DELETE FROM shows WHERE last_polled_at < NOW() - INTERVAL '1 year';
-
-# Archive old episodes (keep recent 2 years for search)
-DELETE FROM episodes WHERE published_at < NOW() - INTERVAL '2 years';
-```
-
-### Integrity Checks
-
-```sql
--- Find episodes without shows
-SELECT COUNT(*) FROM episodes WHERE show_id NOT IN (SELECT id FROM shows);
-
--- Find missing transcripts for high-popularity episodes
-SELECT COUNT(*) FROM episodes 
-WHERE transcript IS NULL AND listen_count > 1000;
-```
-
-## Future Enhancements
-
-1. **Podcast discovery API**: Expose new shows via API
-2. **Feed subscription management**: UI to subscribe/unsubscribe feeds
-3. **Transcript quality scoring**: Prefer high-quality sources
-4. **Automatic feed splitting**: If podcast feed contains multiple shows
-5. **Feed health monitoring**: Alert on stale/dead feeds
+1,790 shows and 797,216 episodes at the last count, ~87k with
+transcripts, 77% English with real Spanish, French, German, and Portuguese
+segments. The data card ([data-card.md](data-card.md)) records the sources
+and the label taxonomy.

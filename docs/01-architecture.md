@@ -1,228 +1,97 @@
 # Architecture
 
-PodFind is a distributed system split between Python (ML and data) and Go (ingestion and serving), with PostgreSQL as the central data store.
-
-## System Overview
-
 ```mermaid
 flowchart TB
-    U["User query<br/>(text today; voice planned)"] --> API["API / Web (Go)<br/>parse intent + structured filters"]
-    API --> RET["Retrieval layer<br/>hybrid: lexical + vector + RRF"]
-    RET --> PG[("PostgreSQL + pgvector<br/>podcasts · episodes · transcripts<br/>FTS indexes · episode_embeddings (HNSW)<br/>jobs · outbox · events")]
-
-    CW["Catalog worker (Go)<br/>discovery · RSS polling · transcripts"] --> PG
-    EMB["Embedding job (Python)<br/>multilingual-e5-small"] --> PG
-    TRAIN["Training (Python)<br/>datasets · fine-tuning"] --> MLF["MLflow<br/>experiments · metrics · registry"]
-    EVAL["Evaluation (Python)<br/>harness + baselines"] --> MLF
-    PG --> TRAIN
-    PG --> EVAL
-
-    FEEDS["Publisher RSS feeds<br/>(via Particle discovery)"] --> CW
-    HF["Model hub<br/>(pretrained encoders)"] --> EMB
-    MINIO[("MinIO<br/>datasets · raw transcripts · models")] <--> TRAIN
-
-    style PG fill:#e1f5ff
-    style MLF fill:#fce4ec
-    style MINIO fill:#f3e5f5
+    FEEDS["Publisher RSS feeds"] --> CW["Catalog worker (Go)<br/>discovery · polling · dedup · transcripts"]
+    PART["Particle data platform<br/>(discovery)"] --> CW
+    CW --> PG[("PostgreSQL + pgvector<br/>podcasts · episodes · transcripts<br/>FTS · episode_embeddings (HNSW)<br/>jobs · outbox · interaction_events")]
+    EMB["Embedding jobs (Python)<br/>E5 · two-tower index"] --> PG
+    PG --> SNAP["Snapshot → datasets (Python)"]
+    SNAP --> TRAIN["Training (Python)"]
+    TRAIN --> ART["Model artifacts<br/>data/models/"]
+    ART --> EMB
+    PG --> EVAL["Evaluation harness (Python)<br/>lexical · vector · two-tower · hybrid"]
+    REL["Relevance set<br/>data/relevance/"] --> EVAL
+    EVAL --> MLF["MLflow"]
+    TRAIN --> MLF
+    SNAP --> MINIO[("MinIO<br/>published datasets · raw transcripts")]
 ```
 
-## Component Layers
+## Components
 
-### 1. Data Ingestion & Catalog (Go)
+**Catalog worker (Go, `cmd/catalog-worker`).** Discovers podcasts through
+the Particle data platform (search and trending), ingests their RSS feeds,
+deduplicates episodes, parses publisher transcripts, and reschedules each
+feed by how recently it published. Work runs through a PostgreSQL job
+queue (`internal/jobs`); state changes and their domain events commit
+together through a transactional outbox (`internal/outbox`).
+[09-catalog.md](09-catalog.md)
 
-**Responsible:** RSS polling, transcript parsing, catalog maintenance
+**Database (PostgreSQL + pgvector).** The only store for catalog data,
+transcripts, full-text indexes, embeddings, jobs, events. Embeddings are
+keyed by `(episode_id, model)` so several models coexist, each with a
+partial HNSW index. [10-database.md](10-database.md)
 
-- **catalog worker:** Maintains a self-updating podcast catalog
-  - Discovers new shows via RSS feeds
-  - Polls existing feeds for new episodes (adaptive scheduling)
-  - Stores metadata (show name, episode title, publish date, duration, explicit flag)
-  - Requests transcript parsing for episodes with transcripts available
+**Retrieval (Python, `ml/retrieval`).** Four systems behind one interface
+(`search(query, k) -> episode ids`): PostgreSQL full-text search,
+pretrained E5 vector search, fine-tuned two-tower vector search, and hybrid
+reciprocal-rank fusion. Structured filters are hard SQL predicates in
+every system. [04-retrieval.md](04-retrieval.md)
 
-- **RSS parser:** Handles feed parsing, deduplication, and error recovery
-  - Supports multiple feed formats and transcript sources
-  - Deduplicates by GUID and enclosure URL
-  - Validates feed structure and handles malformed feeds gracefully
+**Embedding jobs (Python, `ml/embeddings`).** Batch-encode the catalog
+into `episode_embeddings`, resumable and content-hash aware, one job for
+the pretrained model and one for any two-tower artifact.
+[05-embeddings.md](05-embeddings.md)
 
-- **Transcript parser:** Extracts text from published transcripts
-  - Parses multiple transcript formats (Podtrac, Rev, etc.)
-  - Associates transcript text with episodes
-  - Stores in PostgreSQL for full-text indexing
+**Datasets (Python, `ml/datasets`).** An immutable snapshot of the
+database plus a checked-in config and the code revision produce identical
+versioned Parquet splits. Optional raw inputs (LLM-written queries, mined
+negatives) are content-hashed into the manifest.
+[03-data-pipeline.md](03-data-pipeline.md)
 
-### 2. Embeddings & Vector Indexing (Go + ML)
+**Training (Python, `ml/training`, `ml/models`).** The two-tower model
+and its loop; artifacts record architecture, feature contract, dataset
+version, code revision, metrics, and intended use.
+[08-models.md](08-models.md)
 
-**Responsible:** Generating and maintaining vector search indexes
+**Relevance and evaluation (Python, `ml/relevance`, `ml/evaluation`).**
+Query set, candidate pooling, LLM judging with human override, qrels
+export, and the metrics harness. [06-relevance.md](06-relevance.md),
+[07-evaluation.md](07-evaluation.md)
 
-- **Embedding job (Python today; Go orchestration planned):**
-  - Runs sentence-transformers inference in batches (resumable; re-embeds
-    on content change via content hashes)
-  - Stores vectors in PostgreSQL pgvector, keyed by (episode, model)
+**MLflow.** Tracking server in Docker Compose; every evaluation and
+training run logs there. **MinIO** holds published dataset versions and
+raw transcript files.
 
-- **Embedding models (ML):** Fine-tuned or pretrained embedding models
-  - Current: `intfloat/multilingual-e5-small` (384-dim)
-  - Evaluate: larger models (e5-base, BGE) for quality
-  - Versioned in experiments for reproducibility
+Not built: the API (`cmd/api` prints its version and exits), the ML
+worker (`cmd/ml-worker`, same), a web app, voice input, a reranker,
+deployment manifests, and monitoring.
 
-### 3. Retrieval Layer (Go)
+## Data flows
 
-**Responsible:** Searching across lexical and vector indexes
+**Ingestion:** feed → catalog worker → `podcasts`/`episodes`/`transcripts`
+(+ outbox events, `content_hash` per episode) → embedding jobs re-encode
+what changed.
 
-- **Hybrid retrieval:** Combines three strategies
-  - **Lexical:** BM25 via PostgreSQL full-text search (FTS)
-  - **Vector:** cosine-distance ANN search over pgvector embeddings
-  - **RRF (Reciprocal Rank Fusion):** Merges lexical + vector rankings
+**Training:** `make snapshot` → `make dataset` → `make train` → artifact →
+`make index` → evaluate with `make eval`.
 
-- **Filtering & ranking:** 
-  - Hard constraints: language, duration, published date, explicit flag
-  - Soft scoring: popularity, recency, relevance confidence
-  - Future: learned reranker (two-tower model)
+**Evaluation:** `queries.jsonl` + `qrels.txt` → harness runs a system
+against the live catalog → metrics to MLflow and, for reports, to
+`experiments/`.
 
-- **Query parsing (Go):**
-  - Extract intent from free-text or voice queries
-  - Identify structured filters (language, duration, etc.)
-  - Generate embeddings for semantic search
+## Design choices
 
-### 4. Data Pipeline & Training (Python)
-
-**Responsible:** Creating versioned datasets and training models
-
-- **Snapshots:** Point-in-time database dumps
-  - Captures catalog state + transcripts
-  - Used as baseline for dataset building
-  - Versioned in `data/snapshots/`
-
-- **Datasets:** Versioned training/eval data
-  - Built from snapshots + relevance judgments
-  - Schema validation with Pandera
-  - Exported to Parquet for reproducibility
-
-- **Relevance judgments:** Human-labeled relevance set
-  - Graded judgments (relevant, somewhat-relevant, not-relevant)
-  - Multiple queries per system (lexical, vector, hybrid, popularity)
-  - Pooling: combining results from multiple retrieval systems
-  - Future: LLM-assisted judging for scale
-
-### 5. Evaluation (Python)
-
-**Responsible:** Measuring retrieval quality
-
-- **Metrics:** Computed per query and aggregated
-  - Recall@K: Percentage of relevant docs retrieved
-  - MRR (Mean Reciprocal Rank): Quality of first relevant result
-  - NDCG (Normalized Discounted Cumulative Gain): Ranked quality
-  - Coverage: % of episodes with good match
-  - Latency: Query response time
-
-- **Experiment framework:**
-  - Checked-in configs for reproducibility
-  - Tracks which models/snapshots were used
-  - Logs to MLflow for comparison
-
-- **Comparison harness:**
-  - Evaluates multiple configs in one run
-  - Generates detailed reports
-  - Visualizes metric differences
-
-### 6. Data Storage (PostgreSQL + MinIO)
-
-**PostgreSQL:**
-- **Episodes:** ID, title, description, transcript text, language, duration, publish date, explicit flag
-- **Shows:** ID, title, RSS URL, category, language, metadata
-- **Vectors:** pgvector columns for episode embeddings
-- **Indexes:** FTS for lexical search, pgvector indices for approximate NN search
-- **Full text search:** Multilingual stemming, stop word handling
-
-**MinIO:**
-- Stores embedding vectors as serialized numpy arrays (future: compressed binary)
-- Stores large training datasets (Parquet)
-- Stores experiment reports and detailed eval results
-
-## Data Flow
-
-### Ingestion Pipeline
-
-```mermaid
-flowchart LR
-    A["Publisher<br/>RSS feeds"] --> B["Catalog worker<br/>(Go)"]
-    B --> C[("Episodes + Shows")]
-    B --> D["Transcript parser"]
-    D --> E[("Transcripts")]
-    C -->|"content_changed<br/>outbox events"| F["Embedding job<br/>(Python)"]
-    E -->|"content_changed<br/>outbox events"| F
-    F --> G[("episode_embeddings<br/>HNSW index")]
-```
-
-### Training Pipeline
-
-```mermaid
-flowchart LR
-    A[("PostgreSQL")] -->|"make snapshot"| B["Snapshot<br/>(Parquet)"]
-    B -->|"make dataset"| C["Versioned dataset<br/>(Parquet + manifest)"]
-    A -->|"make relevance-pool"| D["Relevance pool"]
-    D -->|"LLM judge +<br/>human override"| E["qrels"]
-    C --> F["Model training<br/>(fine-tuning)"]
-    E --> G["Evaluation harness"]
-    F --> G
-    G --> H["MLflow<br/>metrics + registry"]
-    F -->|"export"| H
-```
-
-### Serving Pipeline
-
-```mermaid
-flowchart LR
-    A["User query"] --> B["Query parser<br/>intent + filters"]
-    B --> C["Hybrid retrieval<br/>lexical + vector"]
-    C --> D["Ranking / filtering"]
-    D --> E["API response"]
-    E --> F[("Interaction events<br/>PostgreSQL")]
-```
-
-## Key Design Decisions
-
-### Python + Go Split
-
-- **Go:** Low-latency serving, background workers, minimal dependencies
-- **Python:** ML libraries (torch, transformers), data processing (pandas, pyarrow)
-- **Data bridge:** PostgreSQL + MinIO; both languages read/write to same tables
-
-### PostgreSQL + pgvector as Sole Index
-
-- Operational simplicity: single database to manage, backup, scale
-- No separate vector DB (Pinecone, Weaviate) reduces complexity
-- Trade-off: vector search less optimized than specialized engines, but sufficient for catalog scale (~800k episodes)
-
-### Versioned Datasets & Snapshots
-
-- Reproducibility: any snapshot can rebuild any dataset bit-for-bit
-- Audit trail: track which data version was used in which experiment
-- No "latest dataset": explicitly specify version in experiment config
-
-### Relevance Judgments Over Synthetic Labels
-
-- Human judgments ground ground truth
-- LLM-assisted labeling for scale (future)
-- Pooling from multiple retrieval systems prevents bias toward any single approach
-
-## Dependencies & Data Flow Diagram
-
-```mermaid
-flowchart TB
-    API["API / query interface (Go)"] <--> RET["Retrieval<br/>lexical + vector + RRF"]
-    RET <--> PG[("PostgreSQL + pgvector<br/>episodes · shows · transcripts<br/>embeddings · FTS indexes")]
-    PG <--> WORK["Background workers (Go)<br/>catalog updater · job queue · outbox"]
-    PG <--> ML["Data pipeline (Python)<br/>datasets · embeddings ·<br/>training · evaluation · MLflow"]
-```
-
-## Scalability Notes
-
-- **Catalog scale:** ~1,800 shows, ~800k episodes fits comfortably in PostgreSQL
-- **Vector index:** pgvector with HNSW or IVFFlat index handles search at this scale
-- **Embedding generation:** Batch processing via workers; can parallelize across episodes
-- **Training:** Datasets in Parquet; models fit in GPU memory
-- **Serving:** API server can scale horizontally; PostgreSQL becomes bottleneck at higher QPS
-
-For deployment at larger scale, consider:
-- Dedicated vector database (Milvus, QdrantDB)
-- Read replicas for PostgreSQL
-- Caching layer (Redis) for frequent queries
-- Async job queue (Bull, Celery) for background work
+- **One database.** Lexical index, vectors, jobs, and events all live in
+  PostgreSQL. At ~800k episodes this is comfortable and removes a class of
+  consistency problems; a dedicated vector store is not needed at this
+  scale.
+- **Go for ingestion, Python for ML.** The worker is long-running,
+  I/O-bound, and needs a small footprint; the ML side needs PyTorch,
+  transformers, and pandas. They share the database, not code.
+- **Reproducibility by construction.** Datasets embed a content hash in
+  their version; artifacts embed the training-config hash in their name;
+  every metric has a checked-in config.
+- **Pooled, extensible ground truth.** Judgments are pooled from the
+  systems under comparison and extended whenever a new system is
+  evaluated, because unjudged results count as irrelevant.

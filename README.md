@@ -1,88 +1,80 @@
 # PodFind
 
-Voice-aware podcast search and recommendation.
+Podcast search over ~800k episodes: hybrid lexical + vector retrieval, a
+fine-tuned two-tower model, and an evaluation setup honest enough to say
+when the model loses.
 
-Podcasts hold an enormous amount of spoken knowledge, but discovery is stuck
-at the show level: charts, categories, and title matching. The moment worth
-finding is usually buried inside an episode nobody can name. PodFind's goal
-is to make that findable — say or type what you actually want:
+Type or (eventually) say what you want — *"English episodes under 45
+minutes about practical uses of AI, published this year, no explicit
+content"* — and get episodes back, ranked, with the constraints enforced
+as hard filters.
 
-> *"Find English episodes under 45 minutes about practical uses of AI,
-> published this year, with no explicit content."*
+## What exists
 
-and get the right episodes back, ranked, with the constraints treated as
-guarantees rather than suggestions.
+| Part | State |
+|---|---|
+| Catalog | Go worker: podcast discovery (Particle), RSS polling on an adaptive schedule, deduplication, publisher transcript parsing. 1,790 shows, ~797k episodes, ~87k transcripts. |
+| Lexical search | PostgreSQL full-text search, weighted across episode, transcript, and show fields, per-language configs, hard filters for language, duration, date, explicit. |
+| Vector search | `multilingual-e5-small` embeddings in `pgvector` with HNSW, plus a versioned index per fine-tuned model. |
+| Hybrid | Reciprocal-rank fusion of the lexical and vector rankings. |
+| Relevance set | 180 queries (navigational, entity, exploratory, filtered), 31,330 graded judgments pooled from every system under comparison, LLM-graded with human override. |
+| Evaluation | Recall@K, hit rate, MRR, NDCG@10, coverage, cohort recall, latency, judged share; one config per system, runs logged to MLflow. |
+| Datasets | Deterministic builder: snapshot + config + code revision → identical versioned Parquet splits. Generators for title queries, weak topic labels, and LLM-written queries with mined hard negatives. |
+| Two-tower model | PyTorch, shared E5 encoder, structured episode features, shared training/serving feature contract, resumable training with judged-pool validation, distillation, hard-negative mining. |
+| Serving API, web app, voice, deployment, monitoring | Not built. Entry points and directories exist as scaffolds. |
 
-## Vision
+## Results so far
 
-- **Search by meaning, not just words.** Queries, listeners, and episodes
-  live in a shared embedding space; exploratory questions land on relevant
-  episodes even when no title contains the query. Exact names and phrases
-  still win through lexical search — retrieval is hybrid on purpose.
-- **Voice as a first-class input.** Spoken queries are transcribed, parsed
-  into intent plus structured filters (language, duration, recency,
-  explicit content), and evaluated as part of retrieval quality — not
-  treated as a UI garnish.
-- **Recommendations that respect intent.** Personalized retrieval from
-  listening history, and "more like this episode" from any starting point,
-  with diversity across shows rather than more-of-the-same.
-- **Evidence before complexity.** Every learned component must beat
-  reproducible baselines on a human-auditable relevance set before it
-  ships; datasets, models, and indexes are versioned and rebuildable
-  bit-for-bit. Claims come with checked-in experiment configs.
-- **Respect for the ecosystem.** Publisher RSS remains the source of truth,
-  attribution is preserved, audio is never copied, and removal requests are
-  honored (see [docs/licensing.md](docs/licensing.md)).
+On the 180-query relevance set (NDCG@10 / Recall@100, same judgment pool):
 
-## Scope
+| system | NDCG@10 | Recall@100 |
+|---|---|---|
+| pretrained E5 vector search | 0.693 | 0.420 |
+| fine-tuned two-tower (third run) | 0.632 | 0.544 |
+| hybrid RRF, E5 leg | 0.684 | 0.547 |
+| hybrid RRF, two-tower leg | 0.652 | 0.670 |
 
-A self-hosted stack: podcast discovery and RSS ingestion, publisher
-transcript parsing, hybrid lexical + vector retrieval with a learned
-reranker, interaction-event capture feeding back into training data, and
-versioned model serving with offline evaluation, monitoring, and rollback —
-Python owns the ML lifecycle, Go owns ingestion and serving, PostgreSQL
-(with `pgvector`) owns the data.
+The fine-tuned model wins on deep recall and exploratory queries and loses
+on top-10 ordering and name queries, so the pretrained index stays in
+production position and the fine-tuned model is the registered candidate.
+Full write-ups: [baseline report](experiments/baseline-report.md),
+[two-tower runs](experiments/two-tower-first-run.md).
 
-**Working today:** a self-maintaining catalog (~1,800 shows, ~800k
-episodes, ~87k transcripts) with adaptive feed polling and daily discovery;
-weighted multilingual full-text search, pretrained-embedding ANN search in
-`pgvector`, and hybrid reciprocal-rank fusion, all with hard structured
-filters; a graded relevance set with an evaluation harness (Recall@K, MRR,
-NDCG, cohort coverage, latency) logging to MLflow and a checked-in baseline
-report; a deterministic dataset pipeline publishing versioned,
-honestly-labeled training snapshots; and a two-tower retrieval model with a
-shared training/serving feature contract, a resumable training loop with
-judged-pool validation, LLM-written training queries with mined hard
-negatives, and a versioned vector index per trained model. The first three
-fine-tuned runs are written up in
-[experiments/two-tower-first-run.md](experiments/two-tower-first-run.md):
-the latest beats the pretrained baseline on deep recall and exploratory
-queries but not yet on top-10 ordering, so the pretrained index stays in
-place and the fine-tuned model is the registered candidate.
+## Layout
 
-**Ahead:** three-leg fusion and a second mining round, the learned
-reranker, voice capture with speech-robustness evaluation, the public
-search API, and production deployment with drift monitoring.
+```
+cmd/            Go entry points: catalog-worker, migrate (api and ml-worker are scaffolds)
+internal/       Go packages: catalog, rss, transcript, discovery, jobs, outbox, objstore
+migrations/     PostgreSQL schema
+ml/             Python: datasets, features, models, training, embeddings, retrieval, relevance, evaluation
+experiments/    Checked-in dataset, training, and eval configs, and reports
+data/           Relevance set (tracked); snapshots, datasets, models (local)
+docs/           Documentation, data card, licensing notes
+```
 
-## Development
+## Running it
 
-Go 1.26+, [uv](https://docs.astral.sh/uv/), and Docker. `docker compose up
--d && make migrate && make ci` brings up the stack (Postgres + pgvector,
-MinIO, MLflow, catalog worker) and runs all checks; see the
-[Makefile](Makefile) for dataset, relevance-set, and evaluation targets,
-and [.env.example](.env.example) for optional credentials.
+Requires Go 1.26+, [uv](https://docs.astral.sh/uv/), and Docker.
 
-- `ml/` — datasets, features, models, training, evaluation (Python)
-- `cmd/`, `internal/` — API, catalog worker, ML worker (Go)
-- `migrations/` — PostgreSQL schema
-- `deploy/` — Compose, Helm, and OpenShift manifests
-- `experiments/` — checked-in experiment configs and reports
-- `docs/` — [data card](docs/data-card.md), [licensing notes](docs/licensing.md)
+```sh
+cp .env.example .env            # optional: Particle API key for discovery
+docker compose up -d postgres minio mlflow
+make migrate
+make ci                         # lint, tests, build
 
-## Licensing and data responsibilities
+docker compose up -d catalog-worker            # ingestion (see docs/09-catalog.md)
+make embed                                     # E5 vectors for the catalog
+make eval-all                                  # every system against the relevance set
+make snapshot && make dataset                  # versioned training data
+make train && make index                       # two-tower model and its index
+```
+
+Every target is in the [Makefile](Makefile); the docs start at
+[docs/00-overview.md](docs/00-overview.md).
+
+## Data responsibilities
 
 Podcast metadata, artwork, and transcripts delivered over public RSS remain
 the property of their publishers. This project stores only required
-metadata and artifacts, preserves attribution, and honors feed removal
-requests — see [docs/licensing.md](docs/licensing.md) before ingesting or
-retaining any content.
+metadata, never downloads audio, preserves attribution, and honors removal
+requests. See [docs/licensing.md](docs/licensing.md).

@@ -1,52 +1,55 @@
-# Data Pipeline: Snapshots, Datasets & Versioning
-
-The data pipeline ensures reproducible, auditable ML workflows by versioning snapshots and datasets.
-
-## Data Pipeline Flow
+# Data pipeline
 
 ```mermaid
-graph LR
-    A["PostgreSQL<br/>Live Catalog<br/>~800k episodes"] -->|"make snapshot"| B["Snapshot<br/>Parquet<br/>Point-in-time"]
-    B -->|"make dataset"| C["Dataset<br/>Filtered + Enriched<br/>Training-ready"]
-    C -->|"make relevance-pool"| D["Relevance Pool<br/>180 queries<br/>~8.9k graded judgments"]
-    D -->|"make eval"| E["Evaluation<br/>Metrics<br/>MLflow"]
-    
-    style A fill:#e1f5ff
-    style B fill:#f3e5f5
-    style C fill:#e8f5e9
-    style D fill:#fff3e0
-    style E fill:#fce4ec
+flowchart LR
+    PG[("PostgreSQL")] -->|"make snapshot"| SNAP["Snapshot<br/>data/snapshots/&lt;id&gt;/"]
+    SNAP -->|"make dataset"| DS["Dataset<br/>data/datasets/&lt;name&gt;-&lt;version&gt;/"]
+    SNAP -->|"make llm-queries"| LQ["llm-queries-*.jsonl"]
+    LQ -->|"make mine-negatives"| NEG["*-negatives.jsonl"]
+    LQ --> DS
+    NEG --> DS
+    DS -->|"--publish"| MINIO[("MinIO")]
+    DS --> TRAIN["make train"]
 ```
 
-## Snapshots: Point-in-Time Captures
+## Snapshots
 
-**Purpose**: Immutable database snapshot for reproducible dataset building.
+`make snapshot` (`ml/datasets/snapshot.py`) exports `episodes.parquet`
+(catalog columns plus a 4,000-character transcript excerpt),
+`podcasts.parquet`, and a `manifest.json` with file hashes into
+`data/snapshots/<id>/`, where the id is derived from the file hashes.
+`data/snapshots/latest` points at the newest one. Capturing a snapshot is
+the only non-deterministic step; everything downstream is a pure function
+of a snapshot, a config, and the code.
 
-### Key Properties
+## Datasets
 
-| Property | Benefit |
-|----------|---------|
-| **Immutable** | Never modified; new data = new version |
-| **Self-contained** | No live DB dependency for dataset building |
-| **Auditable** | Links experiment → dataset → catalog state |
-| **Versionable** | Checked in; fully reproducible from git |
+`make dataset CONFIG=experiments/datasets/<config>.json` (`ml/datasets/build.py`)
+builds one dataset from a snapshot: generators produce rows in the shared
+training-example contract (`ml/datasets/contracts.py`,
+[data/contracts/training-example.md](../data/contracts/training-example.md)),
+rows are validated (schema and label-composition checks), split by
+`event_time` into train / validation / test, and written as Parquet with
+a manifest. The version is `<base_version>-<content hash>`, so rebuilding
+the same inputs yields the same version byte for byte, and any change to
+the rows changes the version.
 
-**Create snapshot:**
-```bash
-make snapshot
-```
+Generators:
 
-**Output**: `episodes.parquet` (catalog columns plus a bounded transcript
-excerpt, the first 4,000 characters, for the episode tower),
-`podcasts.parquet`, and `manifest.json` (snapshot id, timestamp, row counts,
-file hashes)
+| type | query | positive | label class |
+|---|---|---|---|
+| `synthetic_query` | normalized episode title | that episode | synthetic |
+| `topic_similarity` | a category name | an episode of a show in that category | weak |
+| `llm_query` | an LLM-written search for the episode | that episode | synthetic |
 
-### Snapshot Retention
-- Keep: Snapshots used in published experiments (indefinitely)
-- Archive: Older snapshots to S3 (after 6 months)
-- Cleanup: Development snapshots (rolling 2-week window)
+Negatives: random catalog episodes by default; `llm_query` mixes mined
+hard negatives, popularity-weighted episodes, and random ones.
 
-### Raw inputs beyond the snapshot
+Checked-in configs: `search-bootstrap-v1.json` (titles + topics, English),
+`search-bootstrap-v2.json` (same, all languages),
+`search-llm-v1.json` (LLM queries with mined negatives).
+
+## Raw inputs beyond the snapshot
 
 Two optional inputs live next to the snapshot and are hashed into the
 dataset manifest (`inputs`), so a dataset stays reproducible even though
@@ -54,126 +57,26 @@ producing them is not deterministic:
 
 - `llm-queries-<model>.jsonl` — one natural-language query per sampled
   episode, written by an LLM (`make llm-queries`,
-  `ml/datasets/llm_queries.py`); the `llm_query` generator pairs each with
-  its episode. Title-as-query examples teach title copying; these read like
-  searches.
+  `ml/datasets/llm_queries.py`), resumable and shardable.
 - `llm-queries-<model>-negatives.jsonl` — hard negatives mined for those
   queries with the baseline retrievers (`make mine-negatives`,
-  `ml/hard_negatives/mine.py`): top candidates from vector and lexical
-  search minus the positive and its show. The generator mixes a seeded
-  sample of them with popularity-weighted and random negatives.
+  `ml/hard_negatives/mine.py`): top-50 candidates from vector and lexical
+  search minus the positive and its show.
 
-## Datasets: Versioned Training & Eval Data
+## Validation
 
-**Purpose**: Apply filters, enrich features, and join with relevance judgments.
+`ml/datasets/validate.py` runs the schema (types, uniqueness, id lists,
+positive not among negatives or in history, no future timestamps) and a
+distribution report (label class shares, distinct positives, negatives per
+example) with per-dataset thresholds from the config. A build that fails
+validation writes nothing.
 
-### Dataset Construction Steps
+## Publishing
 
-```mermaid
-sequenceDiagram
-    participant Snapshot
-    participant Filter
-    participant Enrich
-    participant Merge
-    participant Split
-    participant Validate
+`--publish` uploads a built dataset to the MinIO `datasets` bucket under
+its version; an existing version is never overwritten.
 
-    Snapshot->>Filter: Load snapshot (~800k episodes)
-    Filter->>Filter: Apply filters (language, dates, transcripts)
-    Filter->>Enrich: eligible episodes pass filter
-    Enrich->>Enrich: Add features (embeddings, BM25 scores, popularity)
-    Enrich->>Merge: Enrich episodes
-    Merge->>Merge: Generate labeled pairs (weak + synthetic)
-    Merge->>Split: ~55k labeled examples
-    Split->>Split: Train/Val/Test split (stratified)
-    Split->>Validate: Validate schema
-    Validate->>Validate: ✓ Parquet export
-```
+## Relevance data
 
-### Configuration & Build
-
-Specify dataset via config file (checked in):
-```bash
-experiments/datasets/search-bootstrap-v1.json
-```
-
-Build:
-```bash
-make dataset CONFIG=experiments/datasets/search-bootstrap-v1.json
-```
-
-**Output**: train.parquet, val.parquet, test.parquet (+ metadata.json)
-
-### Features Added
-
-| Feature Type | Examples |
-|--------------|----------|
-| **Query** | Intent, embedding, difficulty |
-| **Episode** | Title, description, transcript, embedding |
-| **Signals** | BM25 score, vector similarity, popularity |
-| **Labels** | Relevance grade (human-judged) |
-
-### Validation
-
-Schema validation via Pandera:
-- Column presence & types
-- Value constraints (duration > 0, language in {en, es, fr})
-- Null handling
-- Fails loudly on violations
-
-## Experiment-Config Lineage
-
-Every experiment references exact versions:
-
-```mermaid
-graph TB
-    A["Experiment Config<br/>hybrid-rrf-v1.json"] -->|specifies| B["Dataset<br/>search-bootstrap-v1"]
-    B -->|built from| C["Snapshot<br/>2026-01-15"]
-    C -->|captured from| D["PostgreSQL Catalog<br/>git commit abc123"]
-    A -->|logs to| E["MLflow<br/>Run ID: xyz"]
-    E -->|records| F["Metrics<br/>Recall@10: 0.70"]
-
-    style A fill:#fff9c4
-    style B fill:#c8e6c9
-    style C fill:#b3e5fc
-    style D fill:#f8bbd0
-    style E fill:#ffe0b2
-    style F fill:#f0f4c3
-```
-
-**Reproducibility**: Can re-run any historical experiment by specifying snapshot + config + git commit.
-
-## Dataset Lifecycle
-
-```mermaid
-stateDiagram-v2
-    [*] --> Creation
-    Creation --> Validation: Build from snapshot
-    Validation --> Published: Schema OK
-    Published --> InUse: Referenced by experiments
-    InUse --> Archived: Experiment complete
-    Archived --> [*]: Keep forever (reproducibility)
-```
-
-**Strategy**:
-- Meaningful versioning: `search-bootstrap-v1` (not by date)
-- Never overwrite versions
-- Archive: Keep indefinitely (disk is cheap)
-- Track row counts: Before/after at each filter step
-
-## Best Practices
-
-✓ **Version by content** (search-bootstrap-v1), not date  
-✓ **Document filters** in config (explain exclusions)  
-✓ **Validate schema** with Pandera (fail loud on mismatches)  
-✓ **Commit configs** to git (part of reproducible artifact)  
-✓ **Track lineage** (snapshot → dataset → experiment → metrics)  
-
-✗ **Don't overwrite** dataset versions  
-✗ **Don't delete** published datasets (breaks reproducibility)  
-
-## Future Enhancements
-
-- Incremental snapshots (faster delta updates)
-- MLflow dataset versioning (automatic lineage UI)
-- Feature caching (avoid recomputing embeddings)
+The relevance set is separate from training data and tracked in git:
+[06-relevance.md](06-relevance.md).

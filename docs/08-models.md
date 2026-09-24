@@ -1,308 +1,140 @@
-# Models: Training, Evaluation & Export
+# Models
 
-ML models power PodFind's semantic search and future reranking.
+Two kinds of model are in use: the pretrained embedding model that powers
+`vector-e5-small` ([05-embeddings.md](05-embeddings.md)), and the two-tower
+retrieval model fine-tuned from it. A learned reranker is planned but not
+built.
 
-## Model Types
+## Two-tower retrieval model
 
-### Embedding Models (Current)
-
-**Purpose**: Convert text to vectors for semantic search.  
-**Current**: intfloat/multilingual-e5-small (384-dim)
-
-See [05-embeddings.md](05-embeddings.md) for model details and inference strategy.
-
-### Two-Tower Retrieval Model
-
-**Purpose**: Fine-tuned semantic retrieval that must beat the pretrained
-embedding baseline on the relevance set.
-**Code**: `ml/models/two_tower/` (model), `ml/features/` (feature contract
-and featurizer).
+Code: `ml/models/two_tower/` (model), `ml/features/` (feature contract and
+featurizer), `ml/training/` (loop, data, loss).
 
 ```mermaid
 graph LR
     subgraph Query tower
-        QT["query text<br/>(typed or STT)"] --> ENC["Text encoder<br/>multilingual-e5-small<br/>mean pooling"]
+        QT["query text"] --> ENC["Text encoder<br/>multilingual-e5-small<br/>mean pooling"]
         QC["language + intent flags"] --> QH["Residual head"]
         ENC --> QH
     end
     subgraph Episode tower
-        META["titles, categories,<br/>publisher, description"] --> ENC2["Text encoder<br/>(shared weights)"]
-        TR["transcript excerpt<br/>(bounded, optional)"] --> ENC2
+        META["show, title, categories,<br/>publisher, description"] --> ENC2["Text encoder<br/>(shared weights)"]
+        TR["transcript excerpt<br/>(optional)"] --> ENC2
         ST["language, categories,<br/>duration bucket, age bucket,<br/>optional podcast id"] --> EH["Residual head"]
         ENC2 --> EH
     end
     QH --> S["dot(normalize(q), normalize(e))"]
     EH --> S
-    style S fill:#fff3e0
 ```
 
-**Objective**: both towers emit unit vectors in one space; the score is
-their dot product, and training divides it by a fixed temperature (0.05)
-before the contrastive softmax.
+**Objective.** Both towers emit unit vectors; the score is their dot
+product, divided by a fixed temperature (0.05) for the contrastive softmax.
 
-**Design decisions:**
+**Design.**
 
-- **Shared text encoder.** One `multilingual-e5-small` backbone serves both
-  towers (E5's `query:` / `passage:` prefixes keep the sides asymmetric).
-  Separate encoders are a config switch, not the default: they double the
-  parameters without adding data.
-- **Starts at the baseline.** Each tower is `text_vector + head(features)`
-  with the head's last layer zero-initialized, so an untrained model is
-  *numerically identical* to the pretrained-embedding baseline (verified to
-  1e-7 against `SentenceTransformer`). Fine-tuning can only move away from
-  the baseline where the data justifies it, and any regression is a
-  training effect, not an architecture artifact.
-- **Bounded transcript pass.** Episodes with a transcript get a second
-  encoder pass over its first ~2,000 characters (256 tokens); the rest get a
-  zero vector plus a `has_transcript` flag. Only rows with transcripts are
-  encoded, so the ~9% transcript coverage costs ~9% extra compute.
-- **Structured features as embeddings.** Language, duration bucket, and
-  publication-age bucket are learned embeddings; categories are the mean of
-  learned category embeddings. Publication age is computed against a
-  reference time the caller supplies (example event time in training,
-  request time online) so both paths use one definition.
-- **Learned podcast id, off by default.** A hashed podcast-id embedding is
-  available for collaborative signal once interaction data exists; the
-  bootstrap datasets have none, so it stays disabled.
-- **Ablations are config switches.** `episode_text`, `use_transcript`,
-  `use_structured`, `podcast_id_buckets`, `share_text_encoder`, and
-  `query_context` in `TwoTowerConfig` produce the metadata-only,
-  metadata+transcript, id-only, and combined variants from one code path.
+- One `multilingual-e5-small` backbone serves both towers (E5's `query:` /
+  `passage:` prefixes keep the sides asymmetric); separate encoders are a
+  config switch.
+- Each tower is `text_vector + head(features)` with the head's last layer
+  zero-initialized, so an untrained model is numerically identical to the
+  pretrained baseline (verified to 1e-7). Fine-tuning can only move away
+  from the baseline where the data says so.
+- Episodes with a transcript get a second encoder pass over its first
+  ~2,000 characters plus a flag; the rest get zeros. Structured features
+  are learned embeddings; publication age is computed against a
+  caller-supplied reference time (example event time in training, index
+  build time in the index job).
+- Ablations are config switches (`episode_text`, `use_transcript`,
+  `use_structured`, `podcast_id_buckets`, `share_text_encoder`,
+  `query_context`).
 
-**Feature contract** (`ml/features/contract.py`): the text model and its
-prefixes, token budgets (64 query / 256 metadata / 256 transcript), the
-language and category vocabularies built from a catalog snapshot, and the
-duration and age bucket edges. It is saved with every model artifact and
-fingerprinted (SHA-256); the featurizer is constructed from it, so training
-and serving cannot compute features differently without changing the
-fingerprint.
+**Feature contract** (`ml/features/contract.py`): text model and prefixes,
+token budgets (64 query / 256 metadata / 256 transcript), language and
+category vocabularies built from a snapshot, duration and age bucket
+edges. It is saved with every artifact and fingerprinted; the featurizer
+is built from it, so training and index time cannot compute features
+differently without changing the fingerprint. The first fine-tuned run
+failed on exactly this kind of skew: see the report.
 
-**Model artifact layout:**
+## Training
 
-```
-<artifact>/
-├── artifact.json           # architecture, embedding dim, parameter counts,
-│                           # contract fingerprint, git revision, plus
-│                           # training metadata (dataset version, metrics, use)
-├── model_config.json       # TwoTowerConfig
-├── feature_contract.json   # FeatureContract
-├── backbone/config.json    # text-encoder architecture (no hub access to load)
-├── tokenizer/              # the contract's tokenizer
-└── weights.pt              # full state dict
+```sh
+make train TRAIN_CONFIG=experiments/training/two-tower-v3.json
+uv run python -m ml.training.train --config <cfg> --max-steps 20 --no-mlflow   # smoke run
+uv run python -m ml.training.train --config <cfg> --resume                     # continue a checkpoint
 ```
 
-`TwoTowerModel.load(dir)` and `Featurizer.load(dir)` rebuild both halves
-from the directory alone.
+`ml/training/train.py` reads a versioned dataset and the snapshot it was
+built from (it refuses any other snapshot), builds the contract from that
+snapshot, and trains with:
 
-**Versioned index**: `make index ARTIFACT=<dir>` runs the episode tower
-over the live catalog (`ml/embeddings/two_tower_index.py`) and upserts the
-vectors under `two-tower:<artifact name>` in `episode_embeddings`, with a
-partial HNSW index per artifact; `index.json` records the build. The
-`two-tower` retrieval system and the `hybrid-rrf` two-tower leg then read
-that index, so `make eval` compares a trained model against the baselines
-on identical catalog rows.
+- **Loss** — contrastive softmax over a candidate block of in-batch
+  positives plus each example's own negatives; candidates that are the
+  query's positive episode, or the positive of an example with identical
+  query text, are masked.
+- **Optimization** — AdamW with separate encoder and head learning rates,
+  warmup then linear decay, gradient clipping, optional gradient
+  accumulation (`accumulate_steps`), gradient checkpointing, and
+  `trainable_encoder_layers` to freeze the token embeddings and lower
+  layers (which hold most of the parameters and most of the memory).
+- **Distillation** — `distill_weight` adds `1 − cos` against the frozen
+  pretrained encoder on both towers, so fine-tuning cannot drift far from
+  the baseline it must beat.
+- **Training-time augmentation** — `age_jitter_days` moves each example's
+  age reference forward by a seeded log-uniform delay so every age bucket
+  is trained; `query_language_prob` attaches the positive's language to
+  the query as context.
+- **Validation** — with `pool_validation_dir`, every `eval_every` steps
+  the model re-ranks each relevance-set query's judged candidates
+  ([07-evaluation.md](07-evaluation.md)); the best checkpoint by pool
+  NDCG@10 is the one saved as final. The candidate-set accuracy alone
+  saturates within a few hundred steps and cannot select a checkpoint.
+- **Checkpoints** — every validation pass saves the artifact plus
+  optimizer and scheduler state; `--resume` continues it, and the loop
+  saves on interrupt.
+- **Tracking** — parameters and per-step metrics go to MLflow experiment
+  `two-tower-training` (asynchronously). `ml/training/sync_run.py` copies
+  a run logged to a local SQLite store into the server, for training with
+  Docker stopped.
 
-**Measured** (laptop, Apple GPU, batch 64, untrained weights): ~216
-episodes/s through the full episode tower including the transcript pass;
-featurization ~5,000 rows/s. The median episode fills the 256-token
-metadata budget, so descriptions are truncated for most of the catalog.
-
-### Reranker Models (Future)
-
-**Purpose**: Second-stage ranking to refine the fused candidate set. The
-planned ranker is a gradient-boosted tree model over two-tower similarity,
-lexical score and rank, exact-match indicators, freshness, popularity, and
-candidate-source flags; a neural cross-encoder is a challenger that must
-justify its latency, not the default.
-
-### Popularity Models (Baseline)
-
-**Purpose:** Simple baseline for ranking episodes by historical popularity.
-
-**Computation:**
-```python
-# Per-episode popularity score
-popularity = {
-    'global': listen_count / max_listen_count,
-    'by_category': category_listen_count / max_category_listen_count,
-    'recency': 1.0 / (1.0 + days_since_published)
-}
-```
-
-**Usage:** Separate retrieval system in pooling/evaluation.
-
-## Model Training Workflow
-
-```mermaid
-graph LR
-    A["Versioned dataset<br/>train / validation"] --> C["Training loop<br/>ml/training/train.py"]
-    B["Snapshot<br/>episode rows"] --> C
-    C -->|"metrics per step"| D["MLflow"]
-    C -->|"artifact.json + weights"| E["Model artifact<br/>data/models/"]
-    E -->|"acceptance gates"| F["Registry"]
-
-    style C fill:#fff3e0
-    style E fill:#e8f5e9
-```
-
-**Run training:**
-```bash
-make train                                   # experiments/training/two-tower-v1.json
-make train TRAIN_CONFIG=experiments/training/<other>.json
-uv run python -m ml.training.train --config ... --max-steps 20 --no-mlflow   # smoke run
-```
-
-**Inputs**: a checked-in training config (dataset directory, model config,
-optimizer settings, intended use), the versioned dataset it names, and the
-snapshot that dataset was built from — the loop refuses to run against a
-different snapshot. The feature contract's vocabularies are built from that
-snapshot.
-
-**Loss**: contrastive softmax. Each step encodes the batch's queries and a
-candidate block of `[positives | random catalog negatives]` (the negatives
-sampled per example when the dataset was built) and takes cross-entropy of
-each query's positive over every candidate, so all other examples'
-positives act as in-batch negatives. Two masks keep label noise out of the
-gradient: a candidate that is the query's own positive episode, or the
-positive of an example with identical query text (weak topic labels share
-the category name as query), is never treated as a negative.
-
-**Optimization**: AdamW with a small learning rate for the pretrained
-encoder and a larger one for the new heads and embeddings, linear warmup
-then linear decay, gradient clipping. `trainable_encoder_layers` fine-tunes
-only the top N encoder layers (token embeddings and lower layers frozen),
-which removes most optimizer state and activation memory. Gradient
-checkpointing on the encoder is on by default: each step encodes a batch of
-queries plus several hundred 256-token candidates, and recomputing
-activations in the backward pass is what makes that fit a laptop GPU's
-memory. Label strength can optionally weight examples
-(`weight_by_label_strength`).
-
-**Training-time feature augmentation** (`ExampleBatcher`): bootstrap labels
-put the event at publication time, so without intervention the model only
-ever sees "just published" and the publication-age embeddings the index
-actually uses stay untrained — the first fine-tuned run failed exactly this
-way (see [experiments/two-tower-first-run.md](../experiments/two-tower-first-run.md)).
-`age_jitter_days` moves each example's age reference time forward by a
-seeded log-uniform delay so every age bucket is trained;
-`query_language_prob` attaches the positive's language to the query as
-context so the query tower's language embeddings are trained. Both are
-recorded in the artifact's training config.
-
-**Validation on the judged pool**: with `pool_validation_dir` set, every
-validation pass re-ranks each relevance-set query's judged candidates with
-the model (`ml/evaluation/pool_rerank.py`, minutes, no index needed) and
-reports `pool_ndcg_at_10` / `pool_mrr`; the checkpoint with the best pool
-NDCG@10 is the one saved as final (`selected_checkpoint`, `best_step` in
-the artifact). The candidate-set accuracy alone saturates within a few
-hundred steps and cannot select a checkpoint. `make pool-export` writes the
-judged episodes' rows to `data/relevance/judged-episodes.parquet` so this
-runs with the database stopped.
-
-**Distillation and accumulation**: `distill_weight` adds
-`1 - cos(student, teacher)` on both towers against the frozen pretrained
-text model (the E5 baseline, which the untrained model equals), so
-fine-tuning cannot drift far from the baseline it must beat;
-`accumulate_steps` accumulates gradients over micro-batches for a larger
-effective batch at no extra memory.
-
-**Checkpoints and resume**: every validation pass saves the artifact plus
-optimizer and scheduler state (`training_state.pt`); `--resume` continues
-from it with the same config and data order, and the loop also saves on
-interrupt (SIGTERM or Ctrl-C).
-
-**Logged to MLflow** (`two-tower-training`): dataset version, snapshot id,
-config and contract fingerprints, code revision, every model and training
-parameter; per-step training loss, candidate-set accuracy and MRR, learning
-rate; validation loss / accuracy / MRR on a fixed set of validation batches.
-
-**Artifact** (`data/models/<name>-<dataset version>-<config hash>/`): the
-layout above, with `artifact.json` extended by dataset version and content
-hash, snapshot id, the full training config, steps and epochs completed,
-device and wall time, final metrics, the MLflow run id, and the intended
-use. Candidate-set metrics are training diagnostics only; the model earns
-its place through the relevance-set evaluation (see
-[07-evaluation.md](07-evaluation.md)). They saturate quickly on the
-bootstrap data — an untrained model already ranks the positive first for
-nearly every synthetic title query against in-batch and random negatives —
-which is the measured case for hard-negative mining.
-
-**Measured** (laptop, Apple GPU, gradient checkpointing, 16 queries + 80
-candidates per step): ~3.2 s/step, so one epoch of the ~51k-example
-bootstrap dataset at batch 64 is on the order of an hour. Artifacts are
-~470 MB (weights dominate) and live under `data/models/`, which is not
-tracked.
-
-### Two-Stage Ranking
+## Artifacts
 
 ```
-Hybrid RRF (first-stage)
-  ↓ Top 50 candidates
-Reranker (second-stage)
-  ↓ Re-score
-Final ranking (top 10)
+data/models/<name>-<dataset version>-<config hash>/
+├── artifact.json           architecture, embedding dim, parameters, contract fingerprint,
+│                           git revision, dataset version and hash, training config,
+│                           steps, best step, metrics, intended use, MLflow run id
+├── model_config.json
+├── feature_contract.json
+├── backbone/config.json    encoder architecture (loads without hub access)
+├── tokenizer/
+├── weights.pt
+├── training_state.pt       optimizer + scheduler state for --resume
+└── index.json              written by make index: build time, vector count
 ```
 
-**Benefit**: Combines breadth (RRF finds diverse candidates) with depth (reranker refines).
+`TwoTowerModel.load(dir)` and `Featurizer.load(dir)` rebuild both halves.
+`make index ARTIFACT=<dir>` encodes the catalog with the episode tower
+into `episode_embeddings` under `two-tower:<artifact name>`, after which
+the `two-tower` and `hybrid-rrf` systems can read it.
 
-## Hard Negatives
+## Hard negatives
 
-Hard negative mining creates challenging training examples.
+`make mine-negatives` (`ml/hard_negatives/mine.py`) retrieves, for every
+training query, the top-50 candidates from pretrained vector and lexical
+search, drops the positive and its show, and writes them next to the
+queries file; the `llm_query` dataset generator samples from them. Random
+negatives are almost never topically close, so a model trained on them
+only learns to separate unrelated episodes; mined negatives are what the
+baselines actually confuse with the positive.
 
-**Why**: Random negatives are too easy to distinguish; model learns to overfit rather than generalize.
+## Results and status
 
-**Strategy**: Select negatives that rank highly in retrieval but are labeled as non-relevant.
+[experiments/two-tower-first-run.md](../experiments/two-tower-first-run.md)
+records three runs. The current model (`two-tower-llm-v3`) beats the
+pretrained baseline on Recall@50/100, tail coverage, and exploratory
+queries but not on NDCG@10 or name queries, so no fine-tuned model is
+promoted; it is the registered candidate for the next experiments
+(three-leg fusion, a second mining round).
 
-```mermaid
-graph LR
-    A["Query"] -->|"Hybrid search"| B["Candidates<br/>Top 100"]
-    B -->|"Filter by<br/>relevance"| C["Negatives<br/>Not relevant"]
-    C -->|"Rank in<br/>top 10"| D["Hard<br/>Negatives<br/>Hardest examples"]
-    
-    style D fill:#fff3e0
-```
-
-**Intuition**: These episodes almost matched but were marked irrelevant—perfect for training discriminative models.
-
-## Model Export & Serving
-
-### Export Formats
-
-| Format | Use Case |
-|--------|----------|
-| **PyTorch** | Training, fine-tuning |
-| **ONNX** | Go inference (portable) |
-| **TorchScript** | Python inference |
-| **HuggingFace Hub** | Community sharing |
-
-**Workflow**: Train in PyTorch → Export to ONNX → Deploy to Go → Log metrics to MLflow
-
-### Model Registry (MLflow)
-
-Register best checkpoint:
-```
-MLflow UI → Model Registry → Promote to Production → Serve
-```
-
-**Metadata**: Training dataset, git commit, validation metrics (recorded automatically)
-
-## Model Versioning
-
-**Scheme:**
-```
-reranker-e5small-2026-01-15-v1
-       ↑base model    ↑date      ↑iteration
-```
-
-**Storage**: Checkpoint + metadata (training dataset, metrics, git commit)
-
-## Best Practices
-
-✓ **Version everything**: Checkpoints, configs, data versions  
-✓ **Log to MLflow**: Metrics, hyperparameters, artifacts  
-✓ **Evaluate before shipping**: Meet quality gates  
-✓ **Reproducible**: Fixed seeds, documented hyperparameters  
-✓ **Export for production**: ONNX for Go, TorchScript for Python  
-
-✗ **No data leakage**: Train/val/test splits are separate  
-✗ **Don't train on test set**: Use val set for tuning only
+Export to ONNX for serving is planned and not built.

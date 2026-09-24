@@ -36,7 +36,7 @@ report may blend them silently:
 | real | search_play, high_completion, like, save, impression_no_play, early_skip | observed user behavior (none collected yet) |
 | human | human_judgment | human-reviewed relevance judgments |
 | weak | topic_similarity, random_negative | heuristic supervision |
-| synthetic | synthetic_query | generated pairs, clearly flagged |
+| synthetic | synthetic_query | generated pairs, clearly flagged: title-derived queries or LLM-written queries |
 
 Current bootstrap training datasets are 100% weak + synthetic; this is
 expected pre-launch and reported honestly in every manifest.
@@ -58,7 +58,8 @@ used for training** — its only role is measurement.
 - **Transcript skew:** transcript-bearing episodes concentrate in large,
   professionally produced shows (~17% of podcasts).
 - **Synthetic query gap:** title-derived queries are cleaner and more
-  entity-like than real voice queries; speech-noise robustness is not
+  entity-like than real searches, and LLM-written queries reflect one
+  model's idea of how people search; speech-noise robustness is not
   represented in bootstrap data.
 - **LLM judgment risk:** machine-graded relevance may err systematically;
   agreement with human spot-audits should be measured and reported before
