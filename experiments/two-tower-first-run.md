@@ -248,6 +248,10 @@ Recall@100 by relevant-item cohort:
   miner, with name-bearing queries over-sampled to recover navigational
   and entity performance.
 
+The controlled negative-strategy comparison that followed is in
+[negative-sampling-report.md](negative-sampling-report.md); it revises the
+claim above that random negatives were the limiting factor.
+
 ## Operational notes
 
 - The runs above needed six relaunches before one completed, all for the

@@ -1,0 +1,26 @@
+{
+  "name": "search-retrieval-llm-random",
+  "base_version": "1.0.0",
+  "seed": 20260920,
+  "negatives_per_example": 8,
+  "validation_start": "2026-06-01T00:00:00+00:00",
+  "test_start": "2026-07-15T00:00:00+00:00",
+  "generators": [
+    {
+      "type": "llm_query",
+      "queries_file": "llm-queries-gpt-5.1.jsonl",
+      "negatives_file": "llm-queries-gpt-5.1-negatives.jsonl",
+      "hard_negatives": 0,
+      "hard_pool": 20,
+      "popular_negatives": 0,
+      "max_examples": 20000,
+      "label_strength": 0.5
+    }
+  ],
+  "validation": {
+    "min_examples": 1000,
+    "min_distinct_positives": 500,
+    "min_negatives_per_example": 4,
+    "max_synthetic_share": 1.0
+  }
+}

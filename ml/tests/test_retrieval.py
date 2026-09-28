@@ -67,6 +67,9 @@ def test_registry_passes_system_options() -> None:
 def test_two_tower_index_naming() -> None:
     from ml.embeddings.embed import index_name
     from ml.embeddings.two_tower_index import model_id_for_artifact, rows_to_episodes
+    from ml.retrieval.two_tower import TwoTowerSearch
+
+    assert TwoTowerSearch.name == "two-tower"  # registry key; instances add the artifact
 
     model_id = model_id_for_artifact("data/models/two-tower-bootstrap-1.1.0-abc-0123beef")
     assert model_id == "two-tower:two-tower-bootstrap-1.1.0-abc-0123beef"

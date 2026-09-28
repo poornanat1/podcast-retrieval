@@ -2,7 +2,7 @@ GO ?= go
 UV ?= uv
 DATABASE_URL ?= postgres://podfind:podfind@localhost:5432/podfind?sslmode=disable
 
-.PHONY: all build test lint ci python-env migrate snapshot dataset relevance-queries relevance-pool relevance-review relevance-export embed llm-queries mine-negatives pool-export eval eval-all train index reproduce
+.PHONY: all build test lint ci python-env migrate snapshot dataset relevance-queries relevance-pool relevance-review relevance-export embed llm-queries mine-negatives pool-export audit-negatives test-split gates eval eval-all train index reproduce
 
 all: build
 
@@ -55,6 +55,20 @@ mine-negatives:
 
 pool-export:
 	$(UV) run python -m ml.evaluation.pool_rerank --export
+
+audit-negatives:
+	$(UV) run python -m ml.hard_negatives.audit --queries $(QUERIES_FILE)
+
+DATASET_DIR ?= data/datasets/search-retrieval-llm-1.0.0-d52b7c3b104f
+ARTIFACTS ?= $(ARTIFACT)
+
+test-split:
+	$(UV) run python -m ml.evaluation.test_split --dataset $(DATASET_DIR) --artifacts $(ARTIFACTS) --pretrained
+
+COMPARE_JSON ?= experiments/eval/latest-compare.json
+
+gates:
+	$(UV) run python -m ml.registry.register --summaries $(COMPARE_JSON) --candidate two-tower --baseline vector-e5-small --artifact $(ARTIFACT)
 
 relevance-pool:
 	$(UV) run python -m ml.relevance.pool --systems $(POOL_SYSTEMS)

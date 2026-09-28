@@ -83,6 +83,26 @@ embeds its training-config hash; runs record the git commit and whether
 the tree was dirty. The catalog is held fixed while systems are compared
 ([09-catalog.md](09-catalog.md)).
 
+## Held-out test split
+
+`ml/evaluation/test_split.py` scores models on a dataset's untouched test
+split by ranking every test query's positive against one shared candidate
+pool (all test positives plus the top mined candidates of every test
+query), so no model is scored against negatives chosen by its own recipe.
+It measures in-distribution quality — queries shaped like the training
+data — and is read next to the relevance set, which measures the real
+target.
+
+## Acceptance gates
+
+`ml/registry/register.py` evaluates a candidate against the baseline on
+one comparison run: primary metrics (`ndcg_at_10`, `recall_at_100`) must
+be at least the baseline's, and no query type (NDCG@10) or relevant-item
+cohort (Recall@100) may fall more than 0.05 below it. With `--register`
+the artifact is recorded as a version of the MLflow registered model
+`podfind-two-tower`, tagged with every gate check, under the alias
+`champion` if all gates pass or `candidate` otherwise.
+
 ## Judged-pool re-ranking
 
 `ml/evaluation/pool_rerank.py` scores a model by ordering each query's

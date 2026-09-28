@@ -128,13 +128,29 @@ negatives are almost never topically close, so a model trained on them
 only learns to separate unrelated episodes; mined negatives are what the
 baselines actually confuse with the positive.
 
+`make audit-negatives` (`ml/hard_negatives/audit.py`) grades a sample of
+mined negatives with the relevance judge's rubric to measure how many are
+false negatives — relevant episodes the single-positive label leaves
+unlabeled — by mining rank and by source.
+
+## Registration
+
+`make gates` runs the acceptance gates in [07-evaluation.md](07-evaluation.md)
+and, with `--register`, records the artifact in the MLflow model registry
+with the gate outcome. A model becomes `champion` only by passing every
+gate; anything else is a `candidate`.
+
 ## Results and status
 
 [experiments/two-tower-first-run.md](../experiments/two-tower-first-run.md)
-records three runs. The current model (`two-tower-llm-v3`) beats the
-pretrained baseline on Recall@50/100, tail coverage, and exploratory
-queries but not on NDCG@10 or name queries, so no fine-tuned model is
-promoted; it is the registered candidate for the next experiments
-(three-leg fusion, a second mining round).
+records the first three runs and
+[experiments/negative-sampling-report.md](../experiments/negative-sampling-report.md)
+the controlled negative-strategy comparison. The best model so far
+(`two-tower-llm-random-negatives`: LLM-written queries, random negatives)
+beats the pretrained baseline on Recall@50/100, tail coverage, every
+relevant-item cohort, and exploratory queries, but not on NDCG@10 or name
+queries, so it fails the gates and is registered as `candidate`
+(`podfind-two-tower` v1); the pretrained index stays in place. Mined hard
+negatives hurt until cleaned of false negatives.
 
 Export to ONNX for serving is planned and not built.

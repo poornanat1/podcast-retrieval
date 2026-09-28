@@ -18,14 +18,15 @@ Built and measured:
   embedding search (`multilingual-e5-small` in `pgvector`), hybrid
   reciprocal-rank fusion, and a fine-tuned two-tower model with its own
   versioned index. [04-retrieval.md](04-retrieval.md)
-- **Relevance set and evaluation** — 180 queries, 31,330 graded judgments
+- **Relevance set and evaluation** — 180 queries, 36,564 graded judgments
   pooled from every system, LLM-graded with human override; a harness
   reporting recall, hit rate, MRR, NDCG, coverage, cohorts, latency, and
   pool coverage, logging to MLflow. [06-relevance.md](06-relevance.md),
   [07-evaluation.md](07-evaluation.md)
 - **Datasets and training** — deterministic versioned datasets, a
-  training loop with judged-pool validation, hard-negative mining, and
-  LLM-written training queries. [03-data-pipeline.md](03-data-pipeline.md),
+  training loop with judged-pool validation, hard-negative mining and
+  auditing, LLM-written training queries, and acceptance gates with MLflow
+  model registration. [03-data-pipeline.md](03-data-pipeline.md),
   [08-models.md](08-models.md)
 
 Not built yet: the public search API and web app, voice input, a learned

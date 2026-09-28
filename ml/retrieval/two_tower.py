@@ -29,6 +29,9 @@ class TwoTowerSearch:
         self.conn = conn
         self.artifact = Path(artifact)
         self.model_id = model_id_for_artifact(self.artifact)
+        # Reports and MLflow runs carry the artifact, so two trained models
+        # never share a system name.
+        self.name = f"two-tower:{self.artifact.name}"
         self.model = TwoTowerModel.load(self.artifact).eval()
         self.featurizer = Featurizer.load(self.artifact)
         register_vector(conn)

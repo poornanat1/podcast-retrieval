@@ -43,7 +43,7 @@ expected pre-launch and reported honestly in every manifest.
 
 ## Evaluation ground truth
 
-The relevance set (`data/relevance/`) contains 180 queries and ~31k graded
+The relevance set (`data/relevance/`) contains 180 queries and ~36.5k graded
 judgments over candidates pooled from every retrieval system under
 comparison. Judgments are currently
 LLM-generated (`judge: llm:<model>`), each with a rationale; human review

@@ -1,1 +1,1 @@
-"""PodFind ML scaffold."""
+"""Acceptance gates and MLflow model registration."""

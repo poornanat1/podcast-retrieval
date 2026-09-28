@@ -26,6 +26,9 @@ make ci                                   # lint + tests + build
 | `make index ARTIFACT=…` | build a two-tower artifact's vector index |
 | `make relevance-queries` / `relevance-pool` / `relevance-judge` / `relevance-review` / `relevance-export` | relevance-set workflow |
 | `make pool-export` | judged episode rows for pool validation during training |
+| `make audit-negatives` | grade a sample of mined negatives for false negatives |
+| `make test-split DATASET_DIR=… ARTIFACTS=…` | rank held-out positives against one shared pool |
+| `make gates COMPARE_JSON=… ARTIFACT=…` | acceptance gates against the baseline (add `--register` to record the version) |
 | `make eval EVAL_CONFIG=…` / `eval-all` | evaluate one system / every config in `experiments/eval/` |
 
 Variables (`CONFIG`, `SNAPSHOT`, `POOL_SYSTEMS`, `TRAIN_CONFIG`, `ARTIFACT`,
@@ -40,10 +43,11 @@ ml/
 ├── models/two_tower/model.py
 ├── training/       train.py, data.py, loss.py, sync_run.py
 ├── embeddings/     embed.py (E5), two_tower_index.py, text.py
-├── hard_negatives/ mine.py
+├── hard_negatives/ mine.py, audit.py
+├── registry/       register.py
 ├── retrieval/      lexical.py, vector.py, two_tower.py, hybrid.py, popularity.py
 ├── relevance/      queries.py, pool.py, llm_judge.py, review.py, export.py, contracts.py
-├── evaluation/     harness.py, metrics.py, run.py, compare.py, pool_rerank.py
+├── evaluation/     harness.py, metrics.py, run.py, compare.py, pool_rerank.py, test_split.py
 └── tests/
 cmd/                catalog-worker, migrate (api, ml-worker: scaffolds)
 internal/           catalog, rss, transcript, discovery, particle, jobs, outbox, objstore, migrate, pgtest, version

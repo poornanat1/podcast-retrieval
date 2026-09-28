@@ -1,1 +1,1 @@
-"""PodFind ML scaffold."""
+"""Hard-negative mining and auditing."""

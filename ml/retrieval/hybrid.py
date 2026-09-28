@@ -13,6 +13,8 @@ vector ranking.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import psycopg
 
 from ml.retrieval.lexical import LexicalSearch
@@ -52,7 +54,7 @@ class HybridRRF:
             from ml.retrieval.two_tower import TwoTowerSearch
 
             self.vector = TwoTowerSearch(conn, vector_artifact)
-            self.name = "hybrid-rrf-two-tower"
+            self.name = f"hybrid-rrf-two-tower:{Path(vector_artifact).name}"
         else:
             self.vector = VectorSearch(conn)
 

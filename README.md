@@ -17,28 +17,29 @@ as hard filters.
 | Lexical search | PostgreSQL full-text search, weighted across episode, transcript, and show fields, per-language configs, hard filters for language, duration, date, explicit. |
 | Vector search | `multilingual-e5-small` embeddings in `pgvector` with HNSW, plus a versioned index per fine-tuned model. |
 | Hybrid | Reciprocal-rank fusion of the lexical and vector rankings. |
-| Relevance set | 180 queries (navigational, entity, exploratory, filtered), 31,330 graded judgments pooled from every system under comparison, LLM-graded with human override. |
+| Relevance set | 180 queries (navigational, entity, exploratory, filtered), 36,564 graded judgments pooled from every system under comparison, LLM-graded with human override. |
 | Evaluation | Recall@K, hit rate, MRR, NDCG@10, coverage, cohort recall, latency, judged share; one config per system, runs logged to MLflow. |
 | Datasets | Deterministic builder: snapshot + config + code revision → identical versioned Parquet splits. Generators for title queries, weak topic labels, and LLM-written queries with mined hard negatives. |
-| Two-tower model | PyTorch, shared E5 encoder, structured episode features, shared training/serving feature contract, resumable training with judged-pool validation, distillation, hard-negative mining. |
+| Two-tower model | PyTorch, shared E5 encoder, structured episode features, shared training/serving feature contract, resumable training with judged-pool validation, distillation, hard-negative mining and auditing, acceptance gates with MLflow registration. |
 | Serving API, web app, voice, deployment, monitoring | Not built. Entry points and directories exist as scaffolds. |
 
 ## Results so far
 
-On the 180-query relevance set (NDCG@10 / Recall@100, same judgment pool):
+On the 180-query relevance set, latest judgment pool:
 
-| system | NDCG@10 | Recall@100 |
-|---|---|---|
-| pretrained E5 vector search | 0.693 | 0.420 |
-| fine-tuned two-tower (third run) | 0.632 | 0.544 |
-| hybrid RRF, E5 leg | 0.684 | 0.547 |
-| hybrid RRF, two-tower leg | 0.652 | 0.670 |
+| system | NDCG@10 | Recall@100 | exploratory NDCG@10 |
+|---|---|---|---|
+| pretrained E5 vector search | 0.693 | 0.393 | 0.637 |
+| best fine-tuned two-tower (LLM queries, random negatives) | 0.679 | 0.556 | 0.724 |
 
-The fine-tuned model wins on deep recall and exploratory queries and loses
-on top-10 ordering and name queries, so the pretrained index stays in
-production position and the fine-tuned model is the registered candidate.
-Full write-ups: [baseline report](experiments/baseline-report.md),
-[two-tower runs](experiments/two-tower-first-run.md).
+The fine-tuned model wins on deep recall, tail coverage, and exploratory
+queries and still loses on name queries, so it fails the acceptance gates
+on top-10 quality: the pretrained index stays in place and the fine-tuned
+model is registered as the candidate. Mined hard negatives turned out to
+be one-fifth false negatives and hurt. Write-ups:
+[baseline report](experiments/baseline-report.md),
+[two-tower runs](experiments/two-tower-first-run.md),
+[negative sampling](experiments/negative-sampling-report.md).
 
 ## Layout
 
