@@ -240,3 +240,54 @@ def test_llm_query_generator_mixes_hard_popular_and_random_negatives(tmp_path) -
     assert set(manifest["inputs"]) == {"queries.jsonl", "negatives.jsonl"}
     _, again = build_dataset(config, root, tmp_path / "out2")
     assert again["dataset_version"] == manifest["dataset_version"]
+
+
+def test_llm_query_source_filter_show_exclusion_and_prefix(tmp_path) -> None:
+    # Podcast of episode e is 1 + (e - 1) % 5, so episodes 1, 6, 11, ... are show 1.
+    root = write_snapshot(tmp_path, n_episodes=60)
+    (root / "llm.jsonl").write_text(json.dumps({"episode_id": 2, "query_text": "topic two"}) + "\n")
+    (root / "names.jsonl").write_text(json.dumps(
+        {"episode_id": 1, "query_text": "show 1", "exclude_podcasts": [1, 2]}) + "\n")
+
+    def hard(e, system):
+        return {"episode_id": e, "sources": [{"system": system, "rank": 1}]}
+    (root / "llm-neg.jsonl").write_text(json.dumps(
+        {"episode_id": 2, "hard": [hard(8, "vector"), hard(9, "lexical"), hard(10, "lexical")]}
+    ) + "\n")
+    # 6 and 7 belong to the excluded shows 1 and 2; 13 is show 3.
+    (root / "names-neg.jsonl").write_text(json.dumps(
+        {"episode_id": 1, "hard": [hard(6, "lexical"), hard(7, "lexical"), hard(13, "lexical")]}
+    ) + "\n")
+    common = dict(hard_negatives=2, hard_sources=("lexical",), label_strength=0.5)
+    config = make_config(
+        negatives_per_example=6,
+        generators=(
+            GeneratorSpec(type="llm_query", queries_file="llm.jsonl",
+                          negatives_file="llm-neg.jsonl", **common),
+            GeneratorSpec(type="llm_query", queries_file="names.jsonl",
+                          negatives_file="names-neg.jsonl", id_prefix="name", **common),
+        ),
+        validation={"min_examples": 1, "min_distinct_positives": 1,
+                    "min_negatives_per_example": 1, "max_synthetic_share": 1.0},
+    )
+    out_dir, _ = build_dataset(config, root, tmp_path / "out")
+    rows = pd.concat(
+        [load_examples(out_dir / f"{s}.parquet") for s in ("train", "validation", "test")]
+    ).set_index("example_id")
+    assert sorted(rows.index) == ["llm:2", "name:1"]
+    llm = [int(n) for n in rows.loc["llm:2", "negative_episode_ids"]]
+    assert sorted(llm[:2]) == [9, 10] and 8 not in llm  # vector-mined candidate dropped
+    names = [int(n) for n in rows.loc["name:1", "negative_episode_ids"]]
+    assert len(names) == 6 and names[0] == 13
+    assert all(1 + (n - 1) % 5 not in (1, 2) for n in names)  # no episode of a named show
+
+
+def test_config_load_accepts_hard_sources_list(tmp_path) -> None:
+    path = tmp_path / "c.json"
+    path.write_text(json.dumps({
+        "name": "x", "base_version": "1.0.0", "seed": 1,
+        "validation_start": "2026-03-01T00:00:00+00:00",
+        "test_start": "2026-04-01T00:00:00+00:00",
+        "generators": [{"type": "llm_query", "hard_sources": ["lexical-fts"]}],
+    }))
+    assert BuildConfig.load(path).generators[0].hard_sources == ("lexical-fts",)

@@ -18,7 +18,7 @@ Built and measured:
   embedding search (`multilingual-e5-small` in `pgvector`), hybrid
   reciprocal-rank fusion, and a fine-tuned two-tower model with its own
   versioned index. [04-retrieval.md](04-retrieval.md)
-- **Relevance set and evaluation** — 180 queries, 36,564 graded judgments
+- **Relevance set and evaluation** — 180 queries, 40,071 graded judgments
   pooled from every system, LLM-graded with human override; a harness
   reporting recall, hit rate, MRR, NDCG, coverage, cohorts, latency, and
   pool coverage, logging to MLflow. [06-relevance.md](06-relevance.md),

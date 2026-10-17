@@ -88,3 +88,23 @@ def test_acceptance_gates() -> None:
     failed = [c["metric"] for c in result.checks if not c["passed"]]
     assert failed == ["ndcg_at_10", "entity__ndcg_at_10"]
     assert evaluate_gates(loser, baseline, cohort_tolerance=0.3).checks[2]["passed"]
+
+
+def test_mine_query_caches_rankings_per_text() -> None:
+    from ml.hard_negatives.mine import mine_query
+
+    class Counting:
+        name = "lex"
+        calls = 0
+
+        def search(self, query, k):
+            Counting.calls += 1
+            return [10, 11, 12]
+
+    cache: dict = {}
+    episode_podcast = {10: 1, 11: 2, 12: 3}
+    first = mine_query([Counting()], "show name", 10, 1, episode_podcast, 50, cache)
+    second = mine_query([Counting()], "show name", 11, 2, episode_podcast, 50, cache)
+    assert Counting.calls == 1
+    assert [e["episode_id"] for e in first] == [11, 12]
+    assert [e["episode_id"] for e in second] == [10, 12]

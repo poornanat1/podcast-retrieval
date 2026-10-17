@@ -5,7 +5,10 @@ flowchart LR
     PG[("PostgreSQL")] -->|"make snapshot"| SNAP["Snapshot<br/>data/snapshots/&lt;id&gt;/"]
     SNAP -->|"make dataset"| DS["Dataset<br/>data/datasets/&lt;name&gt;-&lt;version&gt;/"]
     SNAP -->|"make llm-queries"| LQ["llm-queries-*.jsonl"]
+    SNAP -->|"make name-queries"| NQ["name-queries.jsonl"]
     LQ -->|"make mine-negatives"| NEG["*-negatives.jsonl"]
+    NQ -->|"make mine-negatives"| NEG
+    NQ --> DS
     LQ --> DS
     NEG --> DS
     DS -->|"--publish"| MINIO[("MinIO")]
@@ -43,15 +46,23 @@ Generators:
 | `llm_query` | an LLM-written search for the episode | that episode | synthetic |
 
 Negatives: random catalog episodes by default; `llm_query` mixes mined
-hard negatives, popularity-weighted episodes, and random ones.
+hard negatives, popularity-weighted episodes, and random ones. Its options
+include `hard_sources` (keep only candidates a named system mined, e.g.
+`["lexical-fts"]`), `id_prefix` (so two query files can share one
+dataset), and a per-query `exclude_podcasts` list in the queries file (no
+episode of those shows becomes a negative). The `llm_query` generator
+also reads the name-queries file, which has the same shape.
 
 Checked-in configs: `search-bootstrap-v1.json` (titles + topics, English),
 `search-bootstrap-v2.json` (same, all languages),
-`search-llm-v1.json` (LLM queries with mined negatives).
+`search-llm-v1.json` (LLM queries with mined negatives),
+`search-llm-{random,hard}-negatives-v1.json` (negative-strategy arms),
+`search-llm-names-v1.json` (LLM queries plus name queries, lexical-mined
+negatives only).
 
 ## Raw inputs beyond the snapshot
 
-Two optional inputs live next to the snapshot and are hashed into the
+Optional inputs live next to the snapshot and are hashed into the
 dataset manifest (`inputs`), so a dataset stays reproducible even though
 producing them is not deterministic:
 
@@ -61,7 +72,13 @@ producing them is not deterministic:
 - `llm-queries-<model>-negatives.jsonl` — hard negatives mined for those
   queries with the baseline retrievers (`make mine-negatives`,
   `ml/hard_negatives/mine.py`): top-50 candidates from vector and lexical
-  search minus the positive and its show.
+  search minus the positive and its show. Repeated query texts are
+  searched once, and `--shard k/n` partitions by query text.
+- `name-queries.jsonl` — show-name and publisher-name queries paired with
+  episodes of that show (`make name-queries`,
+  `ml/datasets/name_queries.py`), deterministic. Shows whose title or
+  publisher is a relevance-set query are left out, so the evaluation's
+  navigational and entity queries are never trained on.
 
 ## Validation
 

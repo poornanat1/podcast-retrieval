@@ -181,6 +181,9 @@ version; the pretrained E5 index remains the vector leg of hybrid
 retrieval. Promotion to `champion` requires passing all gates on one
 comparison run.
 
+The follow-up that targeted the name-query gap, and passed the gates, is
+[name-queries-report.md](name-queries-report.md).
+
 ## Reproduce
 
 ```sh

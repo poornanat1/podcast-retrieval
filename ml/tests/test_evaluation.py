@@ -126,3 +126,21 @@ def test_judged_share_counts_any_judgment_in_top_10() -> None:
     report = evaluate(Fixed(), queries, {"q": {1: 3, 2: 0}}, ks=[10])
     assert report.per_query[0]["judged_share_at_10"] == 0.5
     assert report.global_metrics["judged_share_at_10"] == 0.5
+
+
+def test_paired_bootstrap_detects_consistent_gain_and_null() -> None:
+    from ml.evaluation.significance import compare, paired_bootstrap
+
+    base = {f"q{i}": 0.5 for i in range(50)}
+    better = {f"q{i}": 0.6 if i % 5 else 0.5 for i in range(50)}
+    gain = paired_bootstrap(better, base, resamples=2000)
+    assert gain["queries"] == 50 and gain["wins"] == 40 and gain["ties"] == 10
+    assert gain["ci95"][0] > 0 and gain["p_not_better"] == 0.0
+    null = paired_bootstrap(base, base, resamples=500)
+    assert null["difference"] == 0 and null["p_not_better"] == 1.0
+
+    rows = [{"query_id": "a", "query_type": "entity", "ndcg_at_10": 1.0},
+            {"query_id": "b", "query_type": "navigational", "ndcg_at_10": 0.0}]
+    flipped = [{**r, "ndcg_at_10": 1.0 - r["ndcg_at_10"]} for r in rows]
+    report = compare(rows, flipped, "ndcg_at_10", by_type=True, resamples=200)
+    assert report["entity"]["wins"] == 1 and report["navigational"]["losses"] == 1

@@ -20,7 +20,8 @@ make ci                                   # lint + tests + build
 | `make snapshot` | export the catalog to `data/snapshots/<id>/` |
 | `make dataset CONFIG=…` | build a versioned dataset from a snapshot |
 | `make llm-queries` | LLM-written queries for sampled episodes (raw dataset input) |
-| `make mine-negatives` | hard negatives for those queries from the baseline retrievers |
+| `make name-queries` | show-name and publisher-name queries, relevance-set names held out |
+| `make mine-negatives` | hard negatives for a queries file from the baseline retrievers (`QUERIES_FILE`, `MINE_SYSTEMS`) |
 | `make embed` | E5 vectors for every episode into `pgvector` |
 | `make train TRAIN_CONFIG=…` | train the two-tower model |
 | `make index ARTIFACT=…` | build a two-tower artifact's vector index |
@@ -29,6 +30,7 @@ make ci                                   # lint + tests + build
 | `make audit-negatives` | grade a sample of mined negatives for false negatives |
 | `make test-split DATASET_DIR=… ARTIFACTS=…` | rank held-out positives against one shared pool |
 | `make gates COMPARE_JSON=… ARTIFACT=…` | acceptance gates against the baseline (add `--register` to record the version) |
+| `make significance CANDIDATE_RUN=… BASELINE_RUN=…` | paired bootstrap between two evaluation runs |
 | `make eval EVAL_CONFIG=…` / `eval-all` | evaluate one system / every config in `experiments/eval/` |
 
 Variables (`CONFIG`, `SNAPSHOT`, `POOL_SYSTEMS`, `TRAIN_CONFIG`, `ARTIFACT`,

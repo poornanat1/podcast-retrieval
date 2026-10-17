@@ -145,12 +145,15 @@ gate; anything else is a `candidate`.
 [experiments/two-tower-first-run.md](../experiments/two-tower-first-run.md)
 records the first three runs and
 [experiments/negative-sampling-report.md](../experiments/negative-sampling-report.md)
-the controlled negative-strategy comparison. The best model so far
-(`two-tower-llm-random-negatives`: LLM-written queries, random negatives)
-beats the pretrained baseline on Recall@50/100, tail coverage, every
-relevant-item cohort, and exploratory queries, but not on NDCG@10 or name
-queries, so it fails the gates and is registered as `candidate`
-(`podfind-two-tower` v1); the pretrained index stays in place. Mined hard
-negatives hurt until cleaned of false negatives.
+the controlled negative-strategy comparison, and
+[experiments/name-queries-report.md](../experiments/name-queries-report.md)
+the run that passed the gates. The current champion
+(`two-tower-llm-names`, `podfind-two-tower` v2) adds show-name and
+publisher-name queries to the LLM-written ones (relevance-set names held
+out), keeps only lexical-mined hard negatives, and distills toward E5 at
+weight 1.0. It beats pretrained E5 on NDCG@10 (0.731 vs 0.694) and
+Recall@100 (0.519 vs 0.378) with every query type and cohort inside the
+gate tolerance. The random-negatives model stays registered as
+`candidate` (v1).
 
 Export to ONNX for serving is planned and not built.

@@ -74,6 +74,10 @@ compared within one pool state.
 - [experiments/two-tower-first-run.md](../experiments/two-tower-first-run.md) —
   three fine-tuned runs against the baselines on the extended pool, with
   the diagnoses that shaped them.
+- [experiments/negative-sampling-report.md](../experiments/negative-sampling-report.md) —
+  random, mined, and mixed negatives compared, with a false-negative audit.
+- [experiments/name-queries-report.md](../experiments/name-queries-report.md) —
+  the run that added name queries and passed the gates, with significance.
 
 ## Reproducibility
 
@@ -102,6 +106,17 @@ cohort (Recall@100) may fall more than 0.05 below it. With `--register`
 the artifact is recorded as a version of the MLflow registered model
 `podfind-two-tower`, tagged with every gate check, under the alias
 `champion` if all gates pass or `candidate` otherwise.
+
+## Significance
+
+`make significance CANDIDATE_RUN=… BASELINE_RUN=…`
+(`ml/evaluation/significance.py`) runs a paired bootstrap over the
+per-query metrics two evaluation runs logged to MLflow. Both runs must use
+one judgment pool. It reports the mean difference, a 95% interval, the
+share of resamples where the candidate is not better, and per-query
+wins, ties, and losses, overall and by query type. With 180 queries, a
+top-10 difference of a few hundredths can sit inside noise. The gates do
+not require significance, so reports state it next to the gate verdict.
 
 ## Judged-pool re-ranking
 

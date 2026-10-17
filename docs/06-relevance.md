@@ -59,7 +59,7 @@ reports the human/LLM composition.
 
 ## Current state
 
-36,564 judgments over 180 queries, all LLM-graded so far (no human
+40,071 judgments over 180 queries, all LLM-graded so far (no human
 overrides yet). Spot-auditing a random sample against a human grader, and
 recording the agreement rate, is the outstanding piece of hygiene before
 trusting metric differences smaller than that disagreement.

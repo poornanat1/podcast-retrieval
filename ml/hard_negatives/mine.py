@@ -20,6 +20,7 @@ the baselines actually confuse with the positive.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -33,16 +34,30 @@ from ml.retrieval import build_system
 
 
 def mine_query(systems: list, query_text: str, positive: int, positive_podcast: int,
-               episode_podcast: dict[int, int], depth: int) -> list[dict]:
-    """Ranked candidates from every system, minus the positive and its show."""
+               episode_podcast: dict[int, int], depth: int,
+               cache: dict | None = None) -> list[dict]:
+    """Ranked candidates from every system, minus the positive and its show.
+    ``cache`` memoizes each system's ranking per query text: name queries
+    repeat one text for several episodes of a show."""
     seen: dict[int, dict] = {}
     for system in systems:
-        for rank, episode_id in enumerate(system.search({"query_text": query_text}, depth), 1):
+        key = (system.name, query_text)
+        if cache is not None and key in cache:
+            ranking = cache[key]
+        else:
+            ranking = system.search({"query_text": query_text}, depth)
+            if cache is not None:
+                cache[key] = ranking
+        for rank, episode_id in enumerate(ranking, 1):
             if episode_id == positive or episode_podcast.get(episode_id) == positive_podcast:
                 continue
             entry = seen.setdefault(episode_id, {"episode_id": episode_id, "sources": []})
             entry["sources"].append({"system": system.name, "rank": rank})
     return sorted(seen.values(), key=lambda e: min(s["rank"] for s in e["sources"]))
+
+
+def _shard_of(text: str, n: int) -> int:
+    return int(hashlib.sha256(text.encode()).hexdigest(), 16) % n
 
 
 def mine(queries: list[dict], out: Path, systems: list, episode_podcast: dict[int, int],
@@ -54,11 +69,13 @@ def mine(queries: list[dict], out: Path, systems: list, episode_podcast: dict[in
     pending = [q for q in queries if int(q["episode_id"]) not in done]
     stats = {"queries": len(queries), "already_done": len(done), "written": 0, "empty": 0}
     started = time.time()
+    cache: dict = {}
     with out.open("a") as f:
         for i, q in enumerate(pending, 1):
             positive = int(q["episode_id"])
             hard = mine_query(systems, q["query_text"], positive,
-                              episode_podcast.get(positive, -1), episode_podcast, depth)
+                              episode_podcast.get(positive, -1), episode_podcast, depth,
+                              cache)
             if not hard:
                 stats["empty"] += 1
             f.write(json.dumps({"episode_id": positive, "hard": hard}, sort_keys=True) + "\n")
@@ -85,7 +102,8 @@ def main(argv: list[str] | None = None) -> int:
 
     queries = [json.loads(line) for line in Path(args.queries).read_text().splitlines() if line]
     k, n = (int(x) for x in args.shard.split("/"))
-    queries = queries[k::n]
+    # Shard by query text so repeated texts land in one shard's cache.
+    queries = [q for q in queries if _shard_of(q["query_text"], n) == k]
     suffix = f"-shard{k}" if n > 1 else ""
     out = Path(args.out) if args.out else Path(args.queries).with_name(
         Path(args.queries).stem + f"-negatives{suffix}.jsonl"

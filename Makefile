@@ -2,7 +2,7 @@ GO ?= go
 UV ?= uv
 DATABASE_URL ?= postgres://podfind:podfind@localhost:5432/podfind?sslmode=disable
 
-.PHONY: all build test lint ci python-env migrate snapshot dataset relevance-queries relevance-pool relevance-review relevance-export embed llm-queries mine-negatives pool-export audit-negatives test-split gates eval eval-all train index reproduce
+.PHONY: all build test lint ci python-env migrate snapshot dataset relevance-queries relevance-pool relevance-review relevance-export embed llm-queries name-queries mine-negatives pool-export audit-negatives test-split gates significance eval eval-all train index reproduce
 
 all: build
 
@@ -50,8 +50,13 @@ llm-queries:
 
 QUERIES_FILE ?= data/snapshots/$(shell cat data/snapshots/latest)/llm-queries-gpt-5.1.jsonl
 
+name-queries:
+	$(UV) run python -m ml.datasets.name_queries --snapshot data/snapshots/$(shell cat data/snapshots/latest)
+
+MINE_SYSTEMS ?= vector-e5-small,lexical-fts
+
 mine-negatives:
-	$(UV) run python -m ml.hard_negatives.mine --queries $(QUERIES_FILE)
+	$(UV) run python -m ml.hard_negatives.mine --queries $(QUERIES_FILE) --systems $(MINE_SYSTEMS)
 
 pool-export:
 	$(UV) run python -m ml.evaluation.pool_rerank --export
@@ -68,7 +73,13 @@ test-split:
 COMPARE_JSON ?= experiments/eval/latest-compare.json
 
 gates:
-	$(UV) run python -m ml.registry.register --summaries $(COMPARE_JSON) --candidate two-tower --baseline vector-e5-small --artifact $(ARTIFACT)
+	$(UV) run python -m ml.registry.register --summaries $(COMPARE_JSON) --candidate two-tower:$(notdir $(ARTIFACT)) --baseline vector-e5-small --artifact $(ARTIFACT)
+
+CANDIDATE_RUN ?=
+BASELINE_RUN ?=
+
+significance:
+	$(UV) run python -m ml.evaluation.significance --candidate $(CANDIDATE_RUN) --baseline $(BASELINE_RUN) --by-type
 
 relevance-pool:
 	$(UV) run python -m ml.relevance.pool --systems $(POOL_SYSTEMS)
@@ -90,12 +101,12 @@ eval:
 eval-all:
 	$(UV) run python -m ml.evaluation.compare experiments/eval/*.json
 
-TRAIN_CONFIG ?= experiments/training/two-tower-v3.json
+TRAIN_CONFIG ?= experiments/training/two-tower-names-v1.json
 
 train:
 	$(UV) run python -m ml.training.train --config $(TRAIN_CONFIG)
 
-ARTIFACT ?= data/models/two-tower-llm-v3-1.0.0-d52b7c3b104f-62d87868
+ARTIFACT ?= data/models/two-tower-llm-names-1.0.0-56e2c0708f7e-3b1c13c6
 
 index:
 	$(UV) run python -m ml.embeddings.two_tower_index --artifact $(ARTIFACT)

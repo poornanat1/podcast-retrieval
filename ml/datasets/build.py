@@ -62,6 +62,13 @@ class GeneratorSpec:
     hard_negatives: int = 0
     hard_pool: int = 20
     popular_negatives: int = 0
+    # Keep only mined candidates surfaced by one of these systems (empty: all).
+    # The false-negative audit found vector-mined candidates relevant ~22% of
+    # the time and lexical-mined ones ~3%.
+    hard_sources: tuple[str, ...] = ()
+    # Example ids are ``<id_prefix>:<episode id>``; distinct prefixes let two
+    # query files share a dataset.
+    id_prefix: str = "llm"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -79,7 +86,8 @@ class BuildConfig:
     def load(cls, path: str | Path) -> BuildConfig:
         raw = json.loads(Path(path).read_text())
         raw["generators"] = tuple(
-            GeneratorSpec(**spec) for spec in raw.get("generators", [])
+            GeneratorSpec(**{**spec, "hard_sources": tuple(spec.get("hard_sources", ()))})
+            for spec in raw.get("generators", [])
         )
         config = cls(**raw)
         if not config.generators:
@@ -276,7 +284,8 @@ def generate_llm_query(
     """LLM-written natural-language queries (``ml.datasets.llm_queries``)
     paired with the episode they were written for, with a negative mix of
     mined hard negatives, popularity-weighted negatives, and random ones.
-    Clearly labeled synthetic."""
+    A query row may list ``exclude_podcasts`` (shows the query names); no
+    episode of those shows becomes a negative. Clearly labeled synthetic."""
     episodes = frames["episodes"]
     queries = frames["llm_queries"]
     mined = frames.get("mined_negatives", {})
@@ -300,36 +309,49 @@ def generate_llm_query(
             continue
         if len(str(q.query_text).strip()) < 3:
             continue
-        candidates.append((episode_id, str(q.query_text).strip(), meta))
+        shows = getattr(q, "exclude_podcasts", None)
+        shows = frozenset(int(i) for i in shows) if isinstance(shows, list | np.ndarray) else (
+            frozenset())
+        candidates.append((episode_id, str(q.query_text).strip(), meta, shows))
     picked = set(
         sorted((c[0] for c in candidates),
                key=lambda i: _stable_order_key(config.seed, "llm-sample", i))[: spec.max_examples]
     )
 
     rows = []
-    for episode_id, query, meta in candidates:
+    def allowed(candidate: int, shows: frozenset[int]) -> bool:
+        return not shows or rows_by_id.get(candidate, {}).get("podcast_id") not in shows
+
+    def from_sources(entry: dict) -> bool:
+        return not spec.hard_sources or any(
+            src["system"] in spec.hard_sources for src in entry.get("sources", []))
+
+    for episode_id, query, meta, shows in candidates:
         if episode_id not in picked:
             continue
         excluded = frozenset({episode_id})
         negatives: list[int] = []
-        hard = [int(h["episode_id"]) for h in mined.get(episode_id, [])[: spec.hard_pool]
-                if int(h["episode_id"]) != episode_id]
+        hard = [int(h["episode_id"]) for h in mined.get(episode_id, []) if from_sources(h)]
+        hard = [h for h in hard[: spec.hard_pool] if h != episode_id and allowed(h, shows)]
         if spec.hard_negatives and hard:
             rng = random.Random(f"{config.seed}:hard:{episode_id}")
             negatives.extend(rng.sample(hard, min(spec.hard_negatives, len(hard))))
         if spec.popular_negatives:
-            negatives.extend(_sample_popular(
+            negatives.extend(c for c in _sample_popular(
                 config.seed, episode_id, universe, cum_weights, spec.popular_negatives,
                 excluded | frozenset(negatives),
-            ))
+            ) if allowed(c, shows))
         remaining = config.negatives_per_example - len(negatives)
         if remaining > 0:
-            negatives.extend(_sample_negatives(
-                config.seed, episode_id, universe, remaining,
+            # Oversample when shows are excluded so filtering never leaves
+            # the example short (a show is a tiny share of the catalog).
+            extra = 4 if shows else 0
+            negatives.extend([c for c in _sample_negatives(
+                config.seed, episode_id, universe, remaining + extra,
                 excluded=excluded | frozenset(negatives),
-            ))
+            ) if allowed(c, shows)][:remaining])
         rows.append(_example_row(
-            f"llm:{episode_id}", meta["published_at"], query, episode_id,
+            f"{spec.id_prefix}:{episode_id}", meta["published_at"], query, episode_id,
             negatives[: config.negatives_per_example], LabelSource.SYNTHETIC_QUERY,
             spec.label_strength,
         ))
@@ -403,6 +425,8 @@ def build_dataset(
         generator = GENERATORS.get(spec.type)
         if generator is None:
             raise ValueError(f"unknown generator {spec.type!r}")
+        frames.pop("llm_queries", None)
+        frames.pop("mined_negatives", None)
         if spec.queries_file:
             path = snapshot_dir / spec.queries_file
             frames["llm_queries"] = pd.read_json(path, lines=True)
