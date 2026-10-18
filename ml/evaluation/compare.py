@@ -41,6 +41,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("configs", nargs="+")
     parser.add_argument("--no-mlflow", action="store_true")
+    parser.add_argument("--cold-start-dataset", default=None,
+                        help="training dataset dir defining cold-start cohorts for every system")
     parser.add_argument("--json-out", default="",
                         help="also write the full summaries to this JSON file")
     parser.add_argument(
@@ -49,7 +51,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     summaries = [
-        run_config(path, args.database_url, use_mlflow=not args.no_mlflow)
+        run_config(path, args.database_url, use_mlflow=not args.no_mlflow,
+                   cold_start_dataset=args.cold_start_dataset)
         for path in args.configs
     ]
     print(markdown_table(summaries))

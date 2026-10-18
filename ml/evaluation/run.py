@@ -22,7 +22,7 @@ import psycopg
 
 from ml.datasets.build import code_revision
 from ml.datasets.snapshot import DEFAULT_DATABASE_URL
-from ml.evaluation.harness import evaluate
+from ml.evaluation.harness import cold_start_cohorts, evaluate
 from ml.retrieval import build_system
 
 DEFAULT_MLFLOW_URI = "http://localhost:5001"
@@ -55,9 +55,28 @@ def catalog_stats(conn: psycopg.Connection, head_share: float) -> tuple[int, dic
     return catalog_size, episode_podcast, head
 
 
-def run_config(config_path: str | Path, database_url: str, use_mlflow: bool) -> dict:
-    """Evaluate one config; returns the summary dict (and logs to MLflow)."""
+def load_cold_start(dataset_dir: str | Path, episode_podcast: dict[int, int]) -> dict:
+    """Cold-start cohorts relative to one training dataset and its snapshot."""
+    import pyarrow.parquet as pq
+
+    dataset_dir = Path(dataset_dir)
+    manifest = json.loads((dataset_dir / "manifest.json").read_text())
+    positives = pq.read_table(dataset_dir / "train.parquet", columns=["positive_episode_id"])
+    snapshot = Path("data/snapshots") / manifest["snapshot_id"] / "episodes.parquet"
+    snapshot_ids = pq.read_table(snapshot, columns=["id"])["id"].to_pylist()
+    return cold_start_cohorts(set(positives["positive_episode_id"].to_pylist()),
+                              set(snapshot_ids), episode_podcast)
+
+
+def run_config(config_path: str | Path, database_url: str, use_mlflow: bool,
+               cold_start_dataset: str | None = None) -> dict:
+    """Evaluate one config; returns the summary dict (and logs to MLflow).
+
+    ``cold_start_dataset`` (or the config's ``cold_start_dataset``) adds the
+    cold-start item cohorts relative to that training dataset; every system
+    in one comparison should use the same one."""
     config = json.loads(Path(config_path).read_text())
+    cold_start_dataset = cold_start_dataset or config.get("cold_start_dataset")
     relevance_dir = Path(config.get("relevance_dir", "data/relevance"))
     queries = load_queries(relevance_dir / "queries.jsonl")
     qrels = load_qrels(relevance_dir / "qrels.txt")
@@ -69,6 +88,8 @@ def run_config(config_path: str | Path, database_url: str, use_mlflow: bool) -> 
         with conn.cursor() as cur:
             cur.execute("SELECT episode_id FROM transcripts")
             episodes_with_transcript = {row[0] for row in cur.fetchall()}
+        cohorts = load_cold_start(cold_start_dataset, episode_podcast) if cold_start_dataset \
+            else None
         system = build_system(config["system"], conn, config.get("system_options"))
         report = evaluate(
             system,
@@ -80,6 +101,7 @@ def run_config(config_path: str | Path, database_url: str, use_mlflow: bool) -> 
             episode_podcast=episode_podcast,
             head_podcasts=head,
             episodes_with_transcript=episodes_with_transcript,
+            item_cohorts=cohorts,
         )
 
     summary = {
@@ -109,6 +131,7 @@ def run_config(config_path: str | Path, database_url: str, use_mlflow: bool) -> 
                 "qrels_sha256": qrels_hash,
                 "catalog_size": catalog_size,
                 "min_relevant_grade": config.get("min_relevant_grade", 2),
+                "cold_start_dataset": Path(cold_start_dataset).name if cold_start_dataset else "",
                 **code_revision(),
             })
             mlflow.log_metrics(report.global_metrics)
@@ -129,12 +152,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--config", required=True)
     parser.add_argument("--no-mlflow", action="store_true")
+    parser.add_argument("--cold-start-dataset", default=None)
     parser.add_argument(
         "--database-url", default=os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
     )
     args = parser.parse_args(argv)
 
-    summary = run_config(args.config, args.database_url, use_mlflow=not args.no_mlflow)
+    summary = run_config(args.config, args.database_url, use_mlflow=not args.no_mlflow,
+                         cold_start_dataset=args.cold_start_dataset)
     print(json.dumps(summary, indent=2))
     return 0
 

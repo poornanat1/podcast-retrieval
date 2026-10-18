@@ -29,7 +29,7 @@ from pathlib import Path
 import pandas as pd
 import torch
 
-from ml.datasets.snapshot import DEFAULT_DATABASE_URL
+from ml.datasets.snapshot import DEFAULT_DATABASE_URL, TRANSCRIPT_EXCERPT_CHARS
 from ml.evaluation.run import load_qrels, load_queries
 
 JUDGED_EPISODES = "judged-episodes.parquet"
@@ -37,8 +37,10 @@ JUDGED_EPISODES = "judged-episodes.parquet"
 ROWS_SQL = """
     SELECT e.id, e.podcast_id, e.title, e.description, e.language,
            e.duration_seconds, e.published_at, e.content_hash,
-           p.title AS podcast_title, p.publisher, p.categories
+           p.title AS podcast_title, p.publisher, p.categories,
+           coalesce(left(t.content, %(excerpt_chars)s), '') AS transcript_excerpt
     FROM episodes e JOIN podcasts p ON p.id = e.podcast_id
+    LEFT JOIN transcripts t ON t.episode_id = e.id
     WHERE e.id = ANY(%(ids)s)
     ORDER BY e.id
 """
@@ -50,7 +52,7 @@ def export_judged_episodes(relevance_dir: Path, database_url: str) -> Path:
     qrels = load_qrels(relevance_dir / "qrels.txt")
     ids = sorted({e for grades in qrels.values() for e in grades})
     with psycopg.connect(database_url) as conn, conn.cursor() as cur:
-        cur.execute(ROWS_SQL, {"ids": ids})
+        cur.execute(ROWS_SQL, {"ids": ids, "excerpt_chars": TRANSCRIPT_EXCERPT_CHARS})
         columns = [d.name for d in cur.description]
         frame = pd.DataFrame(cur.fetchall(), columns=columns)
     frame["categories"] = frame["categories"].map(lambda c: list(c) if c is not None else None)

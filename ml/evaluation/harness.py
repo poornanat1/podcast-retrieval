@@ -78,6 +78,28 @@ def _cohort_recalls(
     return out
 
 
+def cold_start_cohorts(
+    train_positives: set[int],
+    snapshot_episodes: set[int],
+    episode_podcast: dict[int, int],
+) -> dict[str, set[int]]:
+    """Partition the catalog by how much training evidence each episode had.
+
+    - ``seen``: the episode was a training positive.
+    - ``known_podcast``: not itself a positive, but its show had one.
+    - ``unseen_podcast``: its show had no training positive at all.
+    - ``post_snapshot``: published into the catalog after the training
+      snapshot was taken (a subset of the other slices, by show).
+    """
+    known = {episode_podcast[e] for e in train_positives if e in episode_podcast}
+    seen = set(train_positives)
+    known_podcast = {e for e, p in episode_podcast.items() if p in known and e not in seen}
+    unseen = {e for e, p in episode_podcast.items() if p not in known}
+    post = {e for e in episode_podcast if e not in snapshot_episodes}
+    return {"seen": seen, "known_podcast": known_podcast,
+            "unseen_podcast": unseen, "post_snapshot": post}
+
+
 def evaluate(
     system: RetrievalSystem,
     queries: list[dict],
@@ -88,7 +110,15 @@ def evaluate(
     episode_podcast: dict[int, int] | None = None,
     head_podcasts: set[int] | None = None,
     episodes_with_transcript: set[int] | None = None,
+    item_cohorts: dict[str, set[int]] | None = None,
 ) -> EvalReport:
+    """Score ``system`` on every query with judged relevant items.
+
+    ``item_cohorts`` adds named episode sets (e.g. cold-start slices from
+    ``cold_start_cohorts``); each gets ``recall_at_{k}__<name>`` over the
+    queries with at least one relevant item in it, like the built-in
+    transcript and head/tail partitions.
+    """
     ks = ks or [10, 50, 100]
     max_k = max(ks)
     episode_podcast = episode_podcast or {}
@@ -149,6 +179,7 @@ def evaluate(
             "no_transcript": relevant - with_transcript,
             "head": head_relevant,
             "tail": relevant - head_relevant,
+            **{name: relevant & members for name, members in (item_cohorts or {}).items()},
         }).items():
             cohort_values[key].append(value)
 

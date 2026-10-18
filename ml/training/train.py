@@ -234,6 +234,14 @@ def build_contract(snapshot_dir: Path, overrides: dict[str, Any]) -> FeatureCont
 TRAINING_STATE_FILENAME = "training_state.pt"
 
 
+def distillation_teacher_config(config: TwoTowerConfig) -> TwoTowerConfig:
+    """The teacher always reads episode text and nothing that needs training
+    first (no transcript pass), so its zero-initialized head makes it exactly
+    pretrained E5 — even when the student's episode tower reads no text (an
+    id-only ablation) or reads transcripts."""
+    return dataclasses.replace(config, episode_text=True, use_transcript=False)
+
+
 def train(
     config: TrainConfig,
     model: TwoTowerModel | None = None,
@@ -255,7 +263,7 @@ def train(
     manifest = json.loads((dataset_dir / "manifest.json").read_text())
     snapshot_dir = snapshot_mod.resolve(config.snapshot)
     snapshot_manifest = json.loads((snapshot_dir / "manifest.json").read_text())
-    if snapshot_manifest["snapshot_id"] != manifest["snapshot_id"]:
+    if not snapshot_mod.compatible(snapshot_manifest, manifest["snapshot_id"]):
         raise SystemExit(
             f"dataset was built from snapshot {manifest['snapshot_id']} but "
             f"{snapshot_dir} is {snapshot_manifest['snapshot_id']}"
@@ -307,7 +315,8 @@ def train(
     if config.distill_weight > 0 and teacher is None:
         # Zero-initialized heads make an untrained model exactly the
         # pretrained text model, so this is the E5 baseline as a teacher.
-        teacher = TwoTowerModel.from_pretrained_text(contract, model.config)
+        teacher = TwoTowerModel.from_pretrained_text(contract,
+                                                     distillation_teacher_config(model.config))
     if teacher is not None:
         teacher = teacher.to(device).eval()
         for p in teacher.parameters():
@@ -354,6 +363,7 @@ def train(
         mlflow.log_params({
             "dataset_version": manifest["dataset_version"],
             "snapshot_id": manifest["snapshot_id"],
+            "features_snapshot_id": snapshot_manifest["snapshot_id"],
             "config_sha256": config.sha256()[:12],
             "feature_contract_sha256": contract.fingerprint()[:12],
             "device": device,
@@ -389,6 +399,9 @@ def train(
             "dataset_content_hash": manifest["content_hash"],
             "dataset_name": manifest["name"],
             "snapshot_id": manifest["snapshot_id"],
+            # The snapshot episode features were read from: the dataset's own,
+            # or one derived from it (e.g. with transcript excerpts added).
+            "features_snapshot_id": snapshot_manifest["snapshot_id"],
             "training_config": dataclasses.asdict(config),
             "training_config_sha256": config.sha256(),
             "train_rows": len(train_batcher),

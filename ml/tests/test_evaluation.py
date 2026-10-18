@@ -144,3 +144,28 @@ def test_paired_bootstrap_detects_consistent_gain_and_null() -> None:
     flipped = [{**r, "ndcg_at_10": 1.0 - r["ndcg_at_10"]} for r in rows]
     report = compare(rows, flipped, "ndcg_at_10", by_type=True, resamples=200)
     assert report["entity"]["wins"] == 1 and report["navigational"]["losses"] == 1
+
+
+def test_cold_start_cohorts_partition_by_training_evidence() -> None:
+    from ml.evaluation.harness import cold_start_cohorts
+
+    episode_podcast = {1: 10, 2: 10, 3: 20, 4: 30, 5: 30}
+    cohorts = cold_start_cohorts({1, 4}, snapshot_episodes={1, 2, 3, 4},
+                                 episode_podcast=episode_podcast)
+    assert cohorts["seen"] == {1, 4}
+    assert cohorts["known_podcast"] == {2, 5}
+    assert cohorts["unseen_podcast"] == {3}
+    assert cohorts["post_snapshot"] == {5}
+
+
+def test_item_cohorts_add_recall_per_cohort() -> None:
+    queries = [{"query_id": "q1", "query_type": "exploratory"},
+               {"query_id": "q2", "query_type": "exploratory"}]
+    qrels = {"q1": {10: 2, 11: 2}, "q2": {20: 2}}
+    system = FakeSystem({"q1": [10, 99], "q2": [20]})
+    report = evaluate(system, queries, qrels, ks=[10],
+                      item_cohorts={"seen": {10, 20}, "unseen_podcast": {11}})
+    g = report.global_metrics
+    assert g["recall_at_10__seen"] == 1.0 and g["recall_at_10__seen__queries"] == 2
+    assert g["recall_at_10__unseen_podcast"] == 0.0
+    assert g["recall_at_10__unseen_podcast__queries"] == 1

@@ -315,3 +315,14 @@ def test_pool_validation_distillation_and_accumulation(tmp_path, snapshot, featu
     saved = TwoTowerModel.load(out_dir).eval()
     rescored = evaluate_pool(saved, Featurizer.load(out_dir), queries, qrels, judged)
     assert rescored["pool_ndcg_at_10"] == metadata["best_pool_ndcg_at_10"]
+
+
+def test_distillation_teacher_is_text_only_for_every_ablation() -> None:
+    from ml.training.train import distillation_teacher_config
+
+    ids_only = TwoTowerConfig(episode_text=False, use_transcript=False, use_structured=False,
+                              podcast_id_buckets=64)
+    teacher = distillation_teacher_config(ids_only)
+    assert teacher.episode_text and not teacher.use_transcript
+    with_transcript = distillation_teacher_config(TwoTowerConfig(use_transcript=True))
+    assert with_transcript.episode_text and not with_transcript.use_transcript

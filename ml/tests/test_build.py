@@ -291,3 +291,18 @@ def test_config_load_accepts_hard_sources_list(tmp_path) -> None:
         "generators": [{"type": "llm_query", "hard_sources": ["lexical-fts"]}],
     }))
     assert BuildConfig.load(path).generators[0].hard_sources == ("lexical-fts",)
+
+
+def test_with_transcripts_keeps_rows_and_marks_presence() -> None:
+    from ml.datasets.snapshot import compatible, with_transcripts
+
+    episodes = pd.DataFrame({"id": [3, 1, 2], "title": ["c", "a", "b"],
+                             "has_transcript": [False, False, True]})
+    transcripts = pd.DataFrame({"episode_id": [1, 2], "transcript_excerpt": ["hello", None]})
+    out = with_transcripts(episodes, transcripts)
+    assert out["id"].tolist() == [3, 1, 2] and out["title"].tolist() == ["c", "a", "b"]
+    assert out["transcript_excerpt"].tolist() == ["", "hello", ""]
+    assert out["has_transcript"].tolist() == [False, True, True]
+    assert compatible({"snapshot_id": "child", "derived_from": "parent"}, "parent")
+    assert compatible({"snapshot_id": "parent"}, "parent")
+    assert not compatible({"snapshot_id": "other"}, "parent")
