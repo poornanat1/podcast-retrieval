@@ -169,3 +169,34 @@ def test_item_cohorts_add_recall_per_cohort() -> None:
     assert g["recall_at_10__seen"] == 1.0 and g["recall_at_10__seen__queries"] == 2
     assert g["recall_at_10__unseen_podcast"] == 0.0
     assert g["recall_at_10__unseen_podcast__queries"] == 1
+
+
+def test_cohort_report_flags_regressions_beyond_tolerance() -> None:
+    from ml.evaluation.cohort_report import render
+
+    def summary(name, nav, ent, unseen):
+        return {"system": name,
+                "by_query_type": {"navigational": {"ndcg_at_10": nav, "queries": 40},
+                                  "entity": {"ndcg_at_10": ent, "queries": 20}},
+                "by_query_language": {"en": {"ndcg_at_10": 0.7, "queries": 172}},
+                "global": {"recall_at_100__unseen_podcast": unseen,
+                           "recall_at_100__unseen_podcast__queries": 127}}
+
+    text = render([summary("base", 0.94, 0.58, 0.40), summary("model", 0.91, 0.40, 0.30)],
+                  baselines=["base"], labels={"model": "champion"}, tolerance=0.05)
+    assert "| champion | 0.910 | 0.400 ▼ |" in text      # navigational within tolerance
+    assert "unseen_podcast (127)" in text and "0.300 ▼" in text
+    assert "champion vs base: entity (query type) 0.400 vs 0.580 (-0.180)" in text
+    assert "navigational (query type)" not in text.split("Regressions")[1]
+    assert render([summary("base", 0.9, 0.5, 0.4)], ["base"], {}).rstrip().endswith("- none")
+
+
+def test_cohort_report_never_flags_tiny_cohorts() -> None:
+    from ml.evaluation.cohort_report import render
+
+    def summary(name, pt):
+        return {"system": name, "by_query_type": {},
+                "by_query_language": {"pt": {"ndcg_at_10": pt, "queries": 1}}, "global": {}}
+
+    text = render([summary("base", 0.9), summary("model", 0.3)], ["base"], {})
+    assert "▼" not in text and text.rstrip().endswith("- none")

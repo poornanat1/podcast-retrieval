@@ -205,7 +205,8 @@ def evaluate(
         queries=len(per_query),
         skipped_queries=skipped,
         global_metrics=global_metrics,
-        by_query_type={t: _aggregate(rows, ks) for t, rows in sorted(by_type.items())},
+        by_query_type={t: {**_aggregate(rows, ks), "queries": len(rows)}
+                       for t, rows in sorted(by_type.items())},
         by_query_language={
             lang: {**_aggregate(rows, ks), "queries": len(rows)}
             for lang, rows in sorted(by_language.items())
