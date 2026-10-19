@@ -19,7 +19,11 @@ sources:
    On 2026-09-18 the worker briefly ran again (see
    [09-catalog.md](09-catalog.md)): 1,683 episodes and 2 podcasts were
    added and 8,976 episodes' metadata refreshed, so comparisons from that
-   date use a 797,216-episode corpus and re-run every baseline on it.
+   date through 2026-10-18 use a 797,216-episode corpus and re-run every
+   baseline on it. On 2026-10-18 the added episodes and podcasts were
+   deleted (with their vectors and the 265 relevance judgments on them),
+   restoring 795,533 episodes and 1,788 podcasts; the metadata refreshes
+   remain.
 2. **Publisher transcripts** — plain-text/SRT/VTT/JSON transcripts linked
    from feeds (~11% episode coverage at the current catalog size).
 3. **Interaction events** — not yet collected; the schema exists and label
@@ -70,15 +74,16 @@ registered champion ([model-card.md](model-card.md)), is 100% synthetic:
   has little positive signal to learn from.
 
 **Coverage of the live catalog.** The catalog the models are evaluated on
-has grown past the snapshot: of 797,216 episodes, 24,122 were training
-positives, 518,044 are other episodes of shows with training positives,
-255,050 belong to shows with no training positive, and 256,341 entered
-the catalog after the snapshot. Evaluation reports recall on each slice
+has grown past the snapshot: of 795,533 episodes, 24,122 were training
+positives, 517,000 are other episodes of shows with training positives,
+254,411 belong to shows with no training positive, and 254,658 entered
+the catalog after the snapshot (the ablation report measured these
+slices on the 797,216-episode corpus). Evaluation reports recall on each slice
 ([experiments/ablation-cold-start-report.md](../experiments/ablation-cold-start-report.md)).
 
 ## Evaluation ground truth
 
-The relevance set (`data/relevance/`) contains 180 queries and ~51k graded
+The relevance set (`data/relevance/`) contains 180 queries and ~50.6k graded
 judgments over candidates pooled from every retrieval system under
 comparison. Judgments are currently
 LLM-generated (`judge: llm:<model>`), each with a rationale; human review

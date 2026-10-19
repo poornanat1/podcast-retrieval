@@ -56,7 +56,9 @@ trained from the code committed in `1a2ff9b`.
 ## Evaluation
 
 180-query relevance set, LLM-graded with human override (no human grades
-yet), latest pool 50,856 judgments.
+yet), pool of 50,856 judgments, measured on the 797,216-episode corpus
+before the 1,683 post-freeze episodes were removed
+([09-catalog.md](09-catalog.md)); not re-run since.
 
 | | pretrained E5 | lexical | this model |
 |---|---|---|---|

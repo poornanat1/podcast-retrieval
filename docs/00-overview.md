@@ -10,7 +10,7 @@ all the data.
 
 Built and measured:
 
-- **Catalog** — 1,790 shows, ~797k episodes, ~87k publisher transcripts,
+- **Catalog** — 1,788 shows, ~796k episodes, ~87k publisher transcripts,
   maintained by a Go worker with adaptive feed polling and daily
   discovery. The evaluation corpus is held fixed; see
   [09-catalog.md](09-catalog.md).
@@ -18,7 +18,7 @@ Built and measured:
   embedding search (`multilingual-e5-small` in `pgvector`), hybrid
   reciprocal-rank fusion, and a fine-tuned two-tower model with its own
   versioned index. [04-retrieval.md](04-retrieval.md)
-- **Relevance set and evaluation** — 180 queries, 50,856 graded judgments
+- **Relevance set and evaluation** — 180 queries, 50,591 graded judgments
   pooled from every system, LLM-graded with human override; a harness
   reporting recall, hit rate, MRR, NDCG, coverage, cohorts, latency, and
   pool coverage, logging to MLflow. [06-relevance.md](06-relevance.md),

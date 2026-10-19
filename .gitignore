@@ -18,6 +18,7 @@ mlartifacts/
 data/snapshots/
 data/datasets/
 data/models/
+data/backups/
 
 # Local configuration
 .env

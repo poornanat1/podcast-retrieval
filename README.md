@@ -13,11 +13,11 @@ as hard filters.
 
 | Part | State |
 |---|---|
-| Catalog | Go worker: podcast discovery (Particle), RSS polling on an adaptive schedule, deduplication, publisher transcript parsing. 1,790 shows, ~797k episodes, ~87k transcripts. |
+| Catalog | Go worker: podcast discovery (Particle), RSS polling on an adaptive schedule, deduplication, publisher transcript parsing. 1,788 shows, ~796k episodes, ~87k transcripts. |
 | Lexical search | PostgreSQL full-text search, weighted across episode, transcript, and show fields, per-language configs, hard filters for language, duration, date, explicit. |
 | Vector search | `multilingual-e5-small` embeddings in `pgvector` with HNSW, plus a versioned index per fine-tuned model. |
 | Hybrid | Reciprocal-rank fusion of the lexical and vector rankings. |
-| Relevance set | 180 queries (navigational, entity, exploratory, filtered), 50,856 graded judgments pooled from every system under comparison, LLM-graded with human override. |
+| Relevance set | 180 queries (navigational, entity, exploratory, filtered), 50,591 graded judgments pooled from every system under comparison, LLM-graded with human override. |
 | Evaluation | Recall@K, hit rate, MRR, NDCG@10, coverage, cohort recall, latency, judged share; one config per system, runs logged to MLflow. |
 | Datasets | Deterministic builder: snapshot + config + code revision → identical versioned Parquet splits. Generators for title queries, weak topic labels, and LLM-written queries with mined hard negatives. |
 | Two-tower model | PyTorch, shared E5 encoder, structured episode features, shared training/serving feature contract, resumable training with judged-pool validation, distillation, hard-negative mining and auditing, acceptance gates with MLflow registration. |

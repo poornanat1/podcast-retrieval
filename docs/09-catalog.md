@@ -29,7 +29,19 @@ trending list per day, default 25, 0 disables).
 > and 2 podcasts and refreshed metadata (and therefore the pretrained
 > vectors) of 8,976 existing episodes, leaving 797,216 episodes / 1,790
 > podcasts. Evaluations from that date re-run every baseline on this
-> corpus rather than reusing earlier numbers. Restarting the stack starts
+> corpus rather than reusing earlier numbers.
+>
+> **Restored (2026-10-18):** the 1,683 episodes and the 2 podcasts (which
+> had no episodes) were deleted, together with their vectors in every
+> index, the 831 pending transcript and feed jobs and 197 unprocessed
+> outbox events that referred to them, and the 265 relevance judgments on
+> those episodes. The catalog is back to 795,533 episodes / 1,788
+> podcasts. The 8,976 metadata refreshes could not be undone and remain.
+> Reports dated 2026-09-18 through 2026-10-18 were measured on the
+> 797,216-episode corpus and say so; their numbers are not re-run. The
+> deleted rows are kept locally in `data/backups/post-freeze-2026-09-18/`
+> (gitignored). Pending feed refreshes will re-add the episodes whenever
+> the worker runs again. Restarting the stack starts
 > the worker: start only the services you need
 > (`docker compose up -d postgres mlflow minio`).
 
@@ -79,7 +91,7 @@ the outbox (`internal/outbox`); a worker drains the events asynchronously.
 
 ## Size
 
-1,790 shows and 797,216 episodes at the last count, ~87k with
+1,788 shows and 795,533 episodes (the frozen corpus), ~87k with
 transcripts, 77% English with real Spanish, French, German, and Portuguese
 segments. The data card ([data-card.md](data-card.md)) records the sources
 and the label taxonomy.
