@@ -25,6 +25,14 @@ flowchart LR
 the only non-deterministic step; everything downstream is a pure function
 of a snapshot, a config, and the code.
 
+`python -m ml.datasets.snapshot --with-transcripts-for data/snapshots/<id>`
+derives a snapshot from an existing one: identical episode and podcast
+rows, with `has_transcript` and `transcript_excerpt` filled from the
+database's current transcripts, and `derived_from` in its manifest.
+Training reads it in place of the parent for datasets built from the
+parent, so an input ablation changes nothing else. It does not move
+`latest`.
+
 ## Datasets
 
 `make dataset CONFIG=experiments/datasets/<config>.json` (`ml/datasets/build.py`)

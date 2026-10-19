@@ -2,7 +2,7 @@ GO ?= go
 UV ?= uv
 DATABASE_URL ?= postgres://podfind:podfind@localhost:5432/podfind?sslmode=disable
 
-.PHONY: all build test lint ci python-env migrate snapshot dataset relevance-queries relevance-pool relevance-review relevance-export embed llm-queries name-queries mine-negatives pool-export audit-negatives test-split gates significance eval eval-all train index reproduce
+.PHONY: all build test lint ci python-env migrate snapshot dataset relevance-queries relevance-pool relevance-review relevance-export embed llm-queries name-queries mine-negatives pool-export audit-negatives test-split gates significance cohort-report eval eval-all train index reproduce
 
 all: build
 
@@ -77,6 +77,9 @@ gates:
 
 CANDIDATE_RUN ?=
 BASELINE_RUN ?=
+
+cohort-report:
+	$(UV) run python -m ml.evaluation.cohort_report --summaries $(COMPARE_JSON)
 
 significance:
 	$(UV) run python -m ml.evaluation.significance --candidate $(CANDIDATE_RUN) --baseline $(BASELINE_RUN) --by-type

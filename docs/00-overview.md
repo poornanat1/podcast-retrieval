@@ -18,7 +18,7 @@ Built and measured:
   embedding search (`multilingual-e5-small` in `pgvector`), hybrid
   reciprocal-rank fusion, and a fine-tuned two-tower model with its own
   versioned index. [04-retrieval.md](04-retrieval.md)
-- **Relevance set and evaluation** — 180 queries, 40,071 graded judgments
+- **Relevance set and evaluation** — 180 queries, 50,856 graded judgments
   pooled from every system, LLM-graded with human override; a harness
   reporting recall, hit rate, MRR, NDCG, coverage, cohorts, latency, and
   pool coverage, logging to MLflow. [06-relevance.md](06-relevance.md),
@@ -50,7 +50,8 @@ entry points are scaffolds.
 | [11-deployment.md](11-deployment.md) | What runs where today |
 | [12-observability.md](12-observability.md) | What is tracked today |
 | [13-development.md](13-development.md) | Setup, Make targets, tests, conventions |
-| [data-card.md](data-card.md) | Data sources, label taxonomy, freeze state |
+| [data-card.md](data-card.md) | Data sources, label taxonomy, freeze state, training-data coverage |
+| [model-card.md](model-card.md) | The registered retriever: data, evaluation, cold start, failure modes |
 | [licensing.md](licensing.md) | Rights and responsibilities for podcast content |
 
 ## Layout

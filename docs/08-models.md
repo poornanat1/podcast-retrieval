@@ -151,9 +151,25 @@ the run that passed the gates. The current champion
 (`two-tower-llm-names`, `podfind-two-tower` v2) adds show-name and
 publisher-name queries to the LLM-written ones (relevance-set names held
 out), keeps only lexical-mined hard negatives, and distills toward E5 at
-weight 1.0. It beats pretrained E5 on NDCG@10 (0.731 vs 0.694) and
-Recall@100 (0.519 vs 0.378) with every query type and cohort inside the
+weight 1.0. It beats pretrained E5 on NDCG@10 (0.730 vs 0.694) and
+Recall@100 (0.519 vs 0.367) with every query type and cohort inside the
 gate tolerance. The random-negatives model stays registered as
-`candidate` (v1).
+`candidate` (v1). The [model card](model-card.md) summarizes it.
+
+[experiments/ablation-cold-start-report.md](../experiments/ablation-cold-start-report.md)
+ablates the episode tower: learned show ids alone fail (0.054 NDCG@10),
+adding them to metadata hurts publisher-name queries, and adding a
+transcript excerpt gives the best single model (0.744) without a
+significant lead over the champion. Gains over E5 hold for shows with no
+training positives.
+
+**Ablation switches.** `episode_text`, `use_structured`, `use_transcript`,
+and `podcast_id_buckets` in the model config turn episode-tower inputs on
+and off. Without episode text the head starts from random weights instead
+of zero. The distillation teacher is always a text-only tower, so it is
+pretrained E5 whatever the student reads. A transcript arm needs a
+snapshot with transcript excerpts: `python -m ml.datasets.snapshot
+--with-transcripts-for <snapshot>` derives one with identical rows, and
+training accepts it for a dataset built from the parent.
 
 Export to ONNX for serving is planned and not built.

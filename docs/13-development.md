@@ -31,6 +31,7 @@ make ci                                   # lint + tests + build
 | `make test-split DATASET_DIR=… ARTIFACTS=…` | rank held-out positives against one shared pool |
 | `make gates COMPARE_JSON=… ARTIFACT=…` | acceptance gates against the baseline (add `--register` to record the version) |
 | `make significance CANDIDATE_RUN=… BASELINE_RUN=…` | paired bootstrap between two evaluation runs |
+| `make cohort-report COMPARE_JSON=…` | per-cohort tables with regressions against the baselines flagged |
 | `make eval EVAL_CONFIG=…` / `eval-all` | evaluate one system / every config in `experiments/eval/` |
 
 Variables (`CONFIG`, `SNAPSHOT`, `POOL_SYSTEMS`, `TRAIN_CONFIG`, `ARTIFACT`,

@@ -41,9 +41,44 @@ report may blend them silently:
 Current bootstrap training datasets are 100% weak + synthetic; this is
 expected pre-launch and reported honestly in every manifest.
 
+## Current training dataset
+
+`search-retrieval-llm-names-1.0.0-56e2c0708f7e`, which trains the
+registered champion ([model-card.md](model-card.md)), is 100% synthetic:
+
+| | train | validation | test |
+|---|---|---|---|
+| rows | 24,348 | 1,087 | 1,408 |
+
+- **Queries**: 18,451 LLM-written natural-language searches, one per
+  sampled episode, and 5,897 show-name or publisher-name queries paired
+  with episodes of that show (training split). Shows whose title or
+  publisher is a relevance-set query are excluded from the name queries.
+  Names are lower-cased and stripped to ASCII letters and digits, so
+  non-English names lose accented letters (the relevance set's English
+  names are normalized the same way).
+- **Negatives**: 2 lexical-mined candidates and 6 random catalog
+  episodes per example.
+- **Splits**: by episode publication time (validation from 2026-06-01,
+  test from 2026-07-15).
+- **Snapshot**: `baf91376ae98` (2026-08-28; 540,875 episodes, 1,314
+  shows). Snapshot `990134867a2f` is derived from it with current
+  transcript excerpts added (48,733 episodes) for transcript ablations;
+  its rows are otherwise identical.
+- **Transcript coverage**: 2,078 of the 24,348 training positives (8.5%)
+  have a transcript, against 14% of the negatives, so a transcript input
+  has little positive signal to learn from.
+
+**Coverage of the live catalog.** The catalog the models are evaluated on
+has grown past the snapshot: of 797,216 episodes, 24,122 were training
+positives, 518,044 are other episodes of shows with training positives,
+255,050 belong to shows with no training positive, and 256,341 entered
+the catalog after the snapshot. Evaluation reports recall on each slice
+([experiments/ablation-cold-start-report.md](../experiments/ablation-cold-start-report.md)).
+
 ## Evaluation ground truth
 
-The relevance set (`data/relevance/`) contains 180 queries and ~40k graded
+The relevance set (`data/relevance/`) contains 180 queries and ~51k graded
 judgments over candidates pooled from every retrieval system under
 comparison. Judgments are currently
 LLM-generated (`judge: llm:<model>`), each with a rationale; human review
@@ -57,10 +92,14 @@ used for training** — its only role is measurement.
 - **Language skew:** ~77% English; es/fr/de/pt at ~100 podcasts each.
 - **Transcript skew:** transcript-bearing episodes concentrate in large,
   professionally produced shows (~17% of podcasts).
-- **Synthetic query gap:** title-derived queries are cleaner and more
-  entity-like than real searches, and LLM-written queries reflect one
-  model's idea of how people search; speech-noise robustness is not
-  represented in bootstrap data.
+- **Synthetic query gap:** LLM-written queries reflect one model's idea
+  of how people search, and name queries label every episode of a show as
+  relevant, which teaches show membership rather than episode relevance
+  (a documented failure mode of the champion). Earlier title-derived
+  queries were cleaner and more entity-like than real searches and are no
+  longer used. Speech-noise robustness is not represented.
+- **Evaluation language skew:** 172 of the 180 relevance-set queries are
+  English; quality in other languages is not yet measurable.
 - **LLM judgment risk:** machine-graded relevance may err systematically;
   agreement with human spot-audits should be measured and reported before
   trusting small metric deltas.

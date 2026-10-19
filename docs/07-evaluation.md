@@ -47,6 +47,7 @@ that have at least one relevant document (grade ≥ `min_relevant_grade`):
 | `ndcg_at_10` | graded ranking quality of the top 10, normalized by the ideal ordering |
 | `judged_share_at_10` | share of the top 10 that has any judgment (pool coverage; see below) |
 | `recall_at_{10,100}__{transcript,no_transcript,head,tail}` | recall restricted to each partition of the relevant set |
+| `recall_at_{10,100}__{seen,known_podcast,unseen_podcast,post_snapshot}` | cold-start partitions, when the run is given a training dataset (below) |
 | `catalog_coverage` | distinct episodes retrieved across all queries / catalog size |
 | `tail_coverage` | share of results from shows outside the top decile by episode count |
 | `latency_ms_p50`, `latency_ms_p95` | wall time per `search` call, database included |
@@ -54,6 +55,16 @@ that have at least one relevant document (grade ≥ `min_relevant_grade`):
 Results are also broken down by query type and by query language. The
 head/tail split uses episode count per show as a popularity proxy until
 real play data exists.
+
+**Cold-start cohorts.** `--cold-start-dataset <dataset dir>` on
+`ml.evaluation.compare` or `ml.evaluation.run` partitions the catalog by
+the training evidence behind each episode: a training positive (`seen`),
+another episode of a show with training positives (`known_podcast`), a
+show with none (`unseen_podcast`), and episodes added after the dataset's
+snapshot (`post_snapshot`, overlapping the others). Every system in one
+comparison should use the same dataset; for untrained baselines the
+slices are just item cohorts of different difficulty, which is why
+reports compare gains over a baseline per slice.
 
 **Recall ceilings.** The median query has dozens of relevant documents, so
 Recall@10 is bounded well below 1; read it against the ceiling reported in
@@ -76,6 +87,9 @@ compared within one pool state.
   the diagnoses that shaped them.
 - [experiments/negative-sampling-report.md](../experiments/negative-sampling-report.md) —
   random, mined, and mixed negatives compared, with a false-negative audit.
+- [experiments/ablation-cold-start-report.md](../experiments/ablation-cold-start-report.md) —
+  episode-tower ablations, cold-start slices, the full cohort report, and
+  the champion's failure modes.
 - [experiments/name-queries-report.md](../experiments/name-queries-report.md) —
   the run that added name queries and passed the gates, with significance.
 
@@ -106,6 +120,15 @@ cohort (Recall@100) may fall more than 0.05 below it. With `--register`
 the artifact is recorded as a version of the MLflow registered model
 `podfind-two-tower`, tagged with every gate check, under the alias
 `champion` if all gates pass or `candidate` otherwise.
+
+## Cohort report
+
+`make cohort-report COMPARE_JSON=…` (`ml/evaluation/cohort_report.py`)
+renders NDCG@10 by query type and language and Recall@100 by
+relevant-item cohort from one comparison, with the query count of each
+cohort, and marks every value more than 0.05 below a baseline (pretrained
+E5 and lexical by default). Cohorts with fewer than 10 queries are shown
+but never flagged.
 
 ## Significance
 
