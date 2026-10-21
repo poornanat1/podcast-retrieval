@@ -47,6 +47,13 @@ same through a two-tower artifact's episode tower, under the model key
 (build time, contract fingerprint, vector count). Publication age is
 computed against the build time.
 
+`make embed-transcripts` (`ml/embeddings/transcripts.py`) encodes the
+first 2,000 characters of every transcript with E5 under the model key
+`intfloat/multilingual-e5-small#transcript` (87,300 vectors, ~140/s). The
+ranker reads these by episode id for a transcript-to-query similarity, so
+no ANN index is built for them. An episode is re-encoded only when its
+excerpt changes.
+
 Measured on an Apple laptop GPU: ~300 episodes/s for E5 (full catalog
 under an hour) and ~200/s through the two-tower episode tower; the HNSW
 build for 797k vectors takes about 40 minutes.
@@ -59,3 +66,28 @@ model (`vector_cosine_ops`, `WHERE model = '<model>'`). Vectors are unit
 length; search uses cosine distance (`<=>`). `content_hash` is the hash of
 the episode's searchable fields at encode time, which is what makes
 re-encoding incremental.
+
+## Search settings and index quality
+
+Searches run with `hnsw.iterative_scan = relaxed_order`, so filtered
+queries keep scanning until the limit is met, and `hnsw.ef_search = 1000`
+(`ml/retrieval/vector.py`). Relaxed order can return rows slightly out of
+distance order, so the scan is materialized and re-sorted by exact
+distance before results leave the database.
+
+Recall against an exact scan, on the relevance set's 21 sampled
+unfiltered queries (2026-10-21):
+
+| index | `ef_search` | recall of the true top 10 | recall of the true top 50 | median ms |
+|---|---|---|---|---|
+| two-tower champion | 200 | 0.829 | 0.834 | 125 |
+| two-tower champion | 1000 | 0.886 | 0.922 | 108 |
+| E5 | 200 | 0.848 | 0.839 | 86 |
+| E5 | 1000 | 0.919 | 0.920 | 98 |
+
+Raising `ef_search` from 200 to 1000 cost nothing in median latency and is
+the current setting; numbers in reports before 2026-10-21 were measured at
+200. Recall still short of 0.95 at 1000 points at the index build
+parameters (pgvector defaults, `m = 16`, `ef_construction = 64`); a
+rebuild with larger values is the next step and takes about 40 minutes
+per index.

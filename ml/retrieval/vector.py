@@ -2,7 +2,9 @@
 
 Embeds the query in-process, then scans the model's HNSW index with the
 query's structured filters as hard predicates. Iterative scanning keeps
-filtered searches from coming back short.
+filtered searches from coming back short. Its ``relaxed_order`` mode can
+return rows slightly out of distance order, so the scan is materialized and
+re-sorted by exact distance, as pgvector recommends.
 """
 
 from __future__ import annotations
@@ -13,17 +15,27 @@ from pgvector.psycopg import register_vector
 from ml.embeddings.text import MODEL_ID, build_query
 
 SEARCH_SQL = """
-SELECT e.id
-FROM episode_embeddings emb
-JOIN episodes e ON e.id = emb.episode_id
-WHERE emb.model = %(model)s
-  AND (%(lang)s = '' OR e.language LIKE %(lang)s || '%%')
-  AND (%(max_duration)s = 0 OR e.duration_seconds <= %(max_duration)s)
-  AND (%(published_after)s = '' OR e.published_at >= %(published_after)s::timestamptz)
-  AND (NOT %(no_explicit)s OR NOT e.explicit)
-ORDER BY emb.embedding <=> %(qvec)s
-LIMIT %(top_k)s
+WITH nearest AS MATERIALIZED (
+    SELECT e.id, emb.embedding <=> %(qvec)s AS distance
+    FROM episode_embeddings emb
+    JOIN episodes e ON e.id = emb.episode_id
+    WHERE emb.model = %(model)s
+      AND (%(lang)s = '' OR e.language LIKE %(lang)s || '%%')
+      AND (%(max_duration)s = 0 OR e.duration_seconds <= %(max_duration)s)
+      AND (%(published_after)s = '' OR e.published_at >= %(published_after)s::timestamptz)
+      AND (NOT %(no_explicit)s OR NOT e.explicit)
+    ORDER BY distance
+    LIMIT %(top_k)s
+)
+SELECT id FROM nearest ORDER BY distance, id
 """
+
+
+# Candidate-list width for HNSW search. Measured on the relevance set's
+# unfiltered queries against an exact scan (2026-10-21): recall of the true
+# top 10 rose from 0.83 to 0.89 (two-tower) and 0.85 to 0.92 (E5) going from
+# 200 to 1000, with no change in median latency (~100 ms).
+EF_SEARCH = 1000
 
 
 def enable_iterative_scan(conn: psycopg.Connection) -> None:
@@ -32,7 +44,7 @@ def enable_iterative_scan(conn: psycopg.Connection) -> None:
     try:
         with conn.cursor() as cur:
             cur.execute("SET hnsw.iterative_scan = relaxed_order")
-            cur.execute("SET hnsw.ef_search = 200")
+            cur.execute(f"SET hnsw.ef_search = {EF_SEARCH}")
         conn.commit()
     except psycopg.Error:
         conn.rollback()
