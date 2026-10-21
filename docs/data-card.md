@@ -83,7 +83,7 @@ slices on the 797,216-episode corpus). Evaluation reports recall on each slice
 
 ## Evaluation ground truth
 
-The relevance set (`data/relevance/`) contains 180 queries and ~50.6k graded
+The relevance set (`data/relevance/`) contains 180 queries and ~71.5k graded
 judgments over candidates pooled from every retrieval system under
 comparison. Judgments are currently
 LLM-generated (`judge: llm:<model>`), each with a rationale; human review

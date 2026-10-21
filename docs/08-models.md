@@ -151,9 +151,10 @@ the run that passed the gates. The current champion
 (`two-tower-llm-names`, `podfind-two-tower` v2) adds show-name and
 publisher-name queries to the LLM-written ones (relevance-set names held
 out), keeps only lexical-mined hard negatives, and distills toward E5 at
-weight 1.0. It beats pretrained E5 on NDCG@10 (0.730 vs 0.694) and
-Recall@100 (0.519 vs 0.367) with every query type and cohort inside the
-gate tolerance. The random-negatives model stays registered as
+weight 1.0. It passed the gates against pretrained E5 at NDCG@10 0.730 vs
+0.694 and Recall@100 0.519 vs 0.367; with the vector search fixed on
+2026-10-21 it measures 0.758 vs 0.720 and 0.421 vs 0.369 on the current
+pool (both gains outside noise). The random-negatives model stays registered as
 `candidate` (v1). The [model card](model-card.md) summarizes it.
 
 [experiments/ablation-cold-start-report.md](../experiments/ablation-cold-start-report.md)
@@ -171,5 +172,41 @@ pretrained E5 whatever the student reads. A transcript arm needs a
 snapshot with transcript excerpts: `python -m ml.datasets.snapshot
 --with-transcripts-for <snapshot>` derives one with identical rows, and
 training accepts it for a dataset built from the parent.
+
+## Learned ranker
+
+`make train-ranker RANKER_CONFIG=experiments/ranking/ranker-v1.json`
+(`ml/ranking/train.py`) trains a LightGBM LambdaRank model over the union
+of the top 50 lexical, E5, and two-tower candidates for every relevance
+query:
+
+1. Candidate sets are generated once (`ml/ranking/candidates.py`) and
+   cached in the artifact directory as `candidates.parquet`. For every
+   candidate they carry all three legs' evidence, not only the legs that
+   retrieved it.
+2. `ml/ranking/features.py` turns each set into the 31-feature matrix.
+   The list and its version are the contract the artifact records, and
+   the harness system refuses an artifact trained on different features.
+3. The 180 queries are split into 5 folds stratified by query type. One
+   model per fold is trained without its fold's queries, and one final
+   model on all queries.
+4. Every ordering of the same candidates (ranker out of fold, RRF, each
+   leg alone) is scored with NDCG@5/@10, MAP@10, P@5/@10, MRR, and
+   pairwise accuracy, globally and by query type, with a paired bootstrap
+   against RRF.
+
+The artifact (`data/models/<name>-<config hash>/`) holds `model.txt`,
+`fold_<k>.txt`, `folds.json`, `ranker.json` (features, config, qrels hash,
+code revision), `metrics.json`, and `per_query.jsonl`. Hyperparameters are
+fixed in the config; tuning them on these folds would leak.
+
+Results, latency, and the decision are in
+[experiments/ranker-report.md](../experiments/ranker-report.md): out of
+fold, the ranker reaches 0.790 NDCG@10 against 0.766 for RRF over the same
+candidates and 0.758 for the two-tower model alone, for about 10 ms per
+query.
+
+LightGBM runs single-threaded in a process that also runs PyTorch; see
+the `ml.ranking` module docstring for why.
 
 Export to ONNX for serving is planned and not built.

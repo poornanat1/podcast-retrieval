@@ -16,9 +16,10 @@ Built and measured:
   [09-catalog.md](09-catalog.md).
 - **Retrieval** — weighted multilingual full-text search, pretrained
   embedding search (`multilingual-e5-small` in `pgvector`), hybrid
-  reciprocal-rank fusion, and a fine-tuned two-tower model with its own
-  versioned index. [04-retrieval.md](04-retrieval.md)
-- **Relevance set and evaluation** — 180 queries, 50,591 graded judgments
+  reciprocal-rank fusion, a fine-tuned two-tower model with its own
+  versioned index, and a learned LightGBM ranker over the union of all
+  three legs' candidates. [04-retrieval.md](04-retrieval.md)
+- **Relevance set and evaluation** — 180 queries, 71,518 graded judgments
   pooled from every system, LLM-graded with human override; a harness
   reporting recall, hit rate, MRR, NDCG, coverage, cohorts, latency, and
   pool coverage, logging to MLflow. [06-relevance.md](06-relevance.md),

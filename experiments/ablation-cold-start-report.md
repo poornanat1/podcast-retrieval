@@ -180,6 +180,16 @@ comparison.
 
 ## Known failure modes
 
+> **Correction (2026-10-21).** The vector search used for this report
+> found only about 83% of the true top 10 (`hnsw.ef_search = 200`) and
+> returned some rows out of distance order. With the fixed search
+> ([05-embeddings.md](../docs/05-embeddings.md#search-settings-and-index-quality)),
+> the champion scores 1.00 on *today explained* and *football ramble* and
+> 0.77 on *is there life on europa*: those failures came from the ANN
+> search, not the model. *ted talks daily* and *short daily news briefing*
+> still fail. The numbers below are as measured at the time; see
+> [ranker-report.md](ranker-report.md) for the current ones.
+
 From the queries where the champion trails pretrained E5 or lexical by
 the most (17 queries trail E5 by more than 0.2 NDCG@10; 28 lead it by
 more than 0.2):

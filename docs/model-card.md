@@ -56,28 +56,39 @@ trained from the code committed in `1a2ff9b`.
 ## Evaluation
 
 180-query relevance set, LLM-graded with human override (no human grades
-yet), pool of 50,856 judgments, measured on the 797,216-episode corpus
-before the 1,683 post-freeze episodes were removed
-([09-catalog.md](09-catalog.md)); not re-run since.
+yet), pool of 71,518 judgments in which every result in every compared
+system's top 10 is judged, on the 795,533-episode frozen catalog, with the
+vector search fixed on 2026-10-21 (exact re-sorting, `ef_search = 1000`;
+[05-embeddings.md](05-embeddings.md#search-settings-and-index-quality)).
 
 | | pretrained E5 | lexical | this model |
 |---|---|---|---|
-| NDCG@10 | 0.694 | 0.535 | 0.730 |
-| Recall@100 | 0.367 | 0.197 | 0.519 |
-| MRR | 0.891 | 0.708 | 0.878 |
+| NDCG@10 | 0.720 | 0.538 | 0.758 |
+| MAP@10 | 0.730 | 0.507 | 0.770 |
+| Recall@100 | 0.369 | 0.261 | 0.421 |
+| MRR | 0.905 | 0.713 | 0.913 |
 
-Against E5 (paired bootstrap): Recall@100 +0.14 (95% interval +0.11 to
-+0.17); NDCG@10 +0.04 (−0.01 to +0.08), probable but not established.
-Passes every acceptance gate against E5. Against lexical: both primary
-metrics far ahead; transcript-bearing relevant items far behind.
+Against E5 (paired bootstrap): NDCG@10 +0.038 (95% interval +0.005 to
++0.071), Recall@100 +0.052 (+0.030 to +0.072). Against lexical: both
+primary metrics far ahead; transcript-bearing relevant items far behind
+(Recall@100 0.19 vs 0.61).
 
-By query type (NDCG@10): navigational 0.908 (E5 0.942), entity 0.750
-(lexical 0.796), exploratory 0.655 (E5 0.636), filtered 0.697 (E5 0.613).
+By query type (NDCG@10): navigational 0.958 (E5 0.987), entity 0.805
+(lexical 0.830), exploratory 0.684 (E5 0.654), filtered 0.681 (E5 0.605).
+
+Earlier numbers in this card's history (0.730 NDCG@10 on a 50,856-judgment
+pool) were measured with the old vector search, which missed about 17% of
+the true top 10; the model is unchanged.
 
 **Cold start.** Recall@100 gains over E5 hold for shows with no training
-positives (+0.12) and are largest for episodes added after the training
-snapshot (+0.24); see
+positives (+0.04 on the current pool) and are largest for episodes added
+after the training snapshot (+0.16); see
 [ablation-cold-start-report.md](../experiments/ablation-cold-start-report.md).
+
+**As a candidate source.** The learned ranker
+([ranker-report.md](../experiments/ranker-report.md)) reorders this
+model's top 50 together with lexical and E5 candidates and reaches 0.790
+NDCG@10.
 
 **Ablations.** Content features carry the model: a learned-show-id-only
 tower scores 0.054 NDCG@10. Adding learned ids to metadata hurts
@@ -88,16 +99,20 @@ model (0.744) but not distinguishable from this one on 180 queries.
 
 1. Topical queries that look like names are mapped to one show sharing a
    word (*short daily news briefing* → *Short Wave*).
-2. Some show names collapse wholesale onto a different show (*today
-   explained* → *Sportsday*); which ones varies between training runs.
+2. Some show names collapse onto a different show (*ted talks daily* →
+   *DK's Daily Shot*). Two of the three examples first reported (*today
+   explained*, *football ramble*) were lost by the old ANN search, not
+   the model, and are right with the fixed search.
 3. Within the right show, episode ranking is weak (*the new statesman*).
 4. Relevance found only in transcript text is out of reach (Recall@100
    0.27 vs lexical's 0.58).
 5. Person-name publisher queries trail exact lexical matching.
 6. Non-English quality is unmeasured (8 of 180 queries).
 
-Mitigation today: serve it as a candidate source fused with lexical
-search, not alone.
+Mitigation today: serve it as a candidate source with lexical and E5
+candidates, reordered by the learned ranker, which fixes the remaining
+show-collapse example and most person-name misses
+([ranker-report.md](../experiments/ranker-report.md)).
 
 ## Ethical and data considerations
 

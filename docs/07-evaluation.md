@@ -44,7 +44,9 @@ that have at least one relevant document (grade ≥ `min_relevant_grade`):
 | `recall_at_{k}` | share of a query's relevant episodes in the top k |
 | `hit_rate_at_{k}` | 1 if any relevant episode is in the top k |
 | `mrr` | 1 / rank of the first relevant episode |
-| `ndcg_at_10` | graded ranking quality of the top 10, normalized by the ideal ordering |
+| `ndcg_at_5`, `ndcg_at_10` | graded ranking quality of the top 5 / 10, normalized by the ideal ordering |
+| `map_at_10` | mean over queries of AP@10: precision at each relevant position in the top 10, over min(relevant, 10) |
+| `precision_at_{5,10}` | share of the top 5 / 10 that is relevant |
 | `judged_share_at_10` | share of the top 10 that has any judgment (pool coverage; see below) |
 | `recall_at_{10,100}__{transcript,no_transcript,head,tail}` | recall restricted to each partition of the relevant set |
 | `recall_at_{10,100}__{seen,known_podcast,unseen_podcast,post_snapshot}` | cold-start partitions, when the run is given a training dataset (below) |
@@ -90,6 +92,9 @@ compared within one pool state.
 - [experiments/ablation-cold-start-report.md](../experiments/ablation-cold-start-report.md) —
   episode-tower ablations, cold-start slices, the full cohort report, and
   the champion's failure modes.
+- [experiments/ranker-report.md](../experiments/ranker-report.md) — the
+  learned ranker against RRF ordering of the same candidates, with
+  latency by stage.
 - [experiments/name-queries-report.md](../experiments/name-queries-report.md) —
   the run that added name queries and passed the gates, with significance.
 
