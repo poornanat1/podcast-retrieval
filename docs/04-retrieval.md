@@ -45,6 +45,28 @@ The vector leg is E5 unless `system_options.vector_artifact` names a
 two-tower artifact (reported as `hybrid-rrf-two-tower`). Source:
 `ml/retrieval/hybrid.py`.
 
+### `hybrid-rrf3` — three-leg fusion over the ranker's candidates
+
+The candidate set the ranker reorders: the top 50 of lexical search, E5,
+and a two-tower model (`system_options.two_tower_artifact`), unioned (about
+125 episodes per query) and ordered by RRF over the three ranks. It is the
+ordering the ranker must beat, on exactly the same candidates. Source:
+`ml/ranking/system.py`, candidates in `ml/ranking/candidates.py`.
+
+### `reranker` — learned second stage
+
+The same candidates, reordered by a LightGBM LambdaRank model over 31
+features (`ml/ranking/features.py`): both vector similarities and the
+transcript similarity, lexical score components, each leg's rank, RRF
+score, exact and partial show, publisher, and title matches, and item
+age, duration, show size, and popularity. `system_options.ranker` names a
+ranker artifact (`make train-ranker`). On relevance-set queries it scores
+each query with the cross-validation fold model that never saw it
+(`out_of_fold`, the default), so harness numbers are out of fold; with
+`out_of_fold: false` it uses the model trained on every query. The
+summary reports per-stage latency (`stage_latency_ms`). See
+[08-models.md](08-models.md#learned-ranker).
+
 ### `popularity-global`, `popularity-category`
 
 Baselines that ignore the query text: most popular shows' episodes, or
@@ -68,5 +90,5 @@ encoder forward pass on CPU), hybrid the sum of its legs.
 
 ## Not built
 
-Query understanding (turning a free-text or spoken request into filters),
-a learned reranker over the fused candidates, and any online serving path.
+Query understanding (turning a free-text or spoken request into filters)
+and any online serving path.

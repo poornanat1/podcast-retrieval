@@ -1,0 +1,22 @@
+{
+  "name": "ranker-lambdamart",
+  "two_tower_artifact": "data/models/two-tower-llm-names-1.0.0-56e2c0708f7e-3b1c13c6",
+  "reference_time": "2026-10-21T00:00:00+00:00",
+  "depth": 50,
+  "folds": 5,
+  "seed": 20261021,
+  "relevance_dir": "data/relevance",
+  "output_dir": "data/models",
+  "min_relevant_grade": 2,
+  "params": {
+    "n_estimators": 300,
+    "learning_rate": 0.05,
+    "num_leaves": 15,
+    "min_child_samples": 20,
+    "subsample": 0.8,
+    "subsample_freq": 1,
+    "colsample_bytree": 0.8,
+    "reg_lambda": 1.0,
+    "lambdarank_truncation_level": 20
+  }
+}

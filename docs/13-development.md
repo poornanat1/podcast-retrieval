@@ -2,7 +2,11 @@
 
 ## Setup
 
-Go 1.26+, Python 3.11+ with [uv](https://docs.astral.sh/uv/), Docker.
+Go 1.26+, Python 3.11+ with [uv](https://docs.astral.sh/uv/), Docker. On
+macOS the ranker's LightGBM needs the OpenMP runtime: `brew install
+libomp`. PyTorch ships its own, and `ml.ranking` keeps the two from
+crashing each other (see its module docstring); import LightGBM only after
+importing `ml.ranking`.
 
 ```sh
 cp .env.example .env                      # PARTICLE_API_KEY for discovery; OPENAI_API_KEY for judging and query generation
@@ -31,6 +35,8 @@ make ci                                   # lint + tests + build
 | `make test-split DATASET_DIR=… ARTIFACTS=…` | rank held-out positives against one shared pool |
 | `make gates COMPARE_JSON=… ARTIFACT=…` | acceptance gates against the baseline (add `--register` to record the version) |
 | `make significance CANDIDATE_RUN=… BASELINE_RUN=…` | paired bootstrap between two evaluation runs |
+| `make embed-transcripts` | E5 vectors for transcript excerpts (ranker feature) |
+| `make train-ranker RANKER_CONFIG=…` | cross-validated LightGBM ranker over the hybrid candidates |
 | `make cohort-report COMPARE_JSON=…` | per-cohort tables with regressions against the baselines flagged |
 | `make eval EVAL_CONFIG=…` / `eval-all` | evaluate one system / every config in `experiments/eval/` |
 

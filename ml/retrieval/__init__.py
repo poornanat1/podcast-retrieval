@@ -13,6 +13,7 @@ import psycopg
 def build_system(name: str, conn: psycopg.Connection, options: dict | None = None):
     """``options`` (an eval config's ``system_options``) are passed to the
     system's constructor — e.g. the model artifact for learned systems."""
+    from ml.ranking.system import HybridRRF3, Reranker
     from ml.retrieval.hybrid import HybridRRF
     from ml.retrieval.lexical import LexicalSearch
     from ml.retrieval.popularity import CategoryPopularity, GlobalPopularity
@@ -26,6 +27,8 @@ def build_system(name: str, conn: psycopg.Connection, options: dict | None = Non
         VectorSearch.name: VectorSearch,
         TwoTowerSearch.name: TwoTowerSearch,
         HybridRRF.name: HybridRRF,
+        HybridRRF3.name: HybridRRF3,
+        Reranker.name: Reranker,
     }
     if name not in registry:
         raise ValueError(f"unknown retrieval system {name!r}; known: {sorted(registry)}")

@@ -2,7 +2,7 @@ GO ?= go
 UV ?= uv
 DATABASE_URL ?= postgres://podfind:podfind@localhost:5432/podfind?sslmode=disable
 
-.PHONY: all build test lint ci python-env migrate snapshot dataset relevance-queries relevance-pool relevance-review relevance-export embed llm-queries name-queries mine-negatives pool-export audit-negatives test-split gates significance cohort-report eval eval-all train index reproduce
+.PHONY: all build test lint ci python-env migrate snapshot dataset relevance-queries relevance-pool relevance-review relevance-export embed embed-transcripts train-ranker llm-queries name-queries mine-negatives pool-export audit-negatives test-split gates significance cohort-report eval eval-all train index reproduce
 
 all: build
 
@@ -42,6 +42,14 @@ POOL_SYSTEMS ?= lexical-fts,popularity-global,popularity-category,vector-e5-smal
 
 embed:
 	$(UV) run python -m ml.embeddings.embed
+
+embed-transcripts:
+	$(UV) run python -m ml.embeddings.transcripts
+
+RANKER_CONFIG ?= experiments/ranking/ranker-v1.json
+
+train-ranker:
+	$(UV) run python -m ml.ranking.train --config $(RANKER_CONFIG)
 
 LLM_QUERY_EPISODES ?= 20000
 
