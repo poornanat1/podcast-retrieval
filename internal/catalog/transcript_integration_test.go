@@ -140,14 +140,17 @@ func TestTranscriptPipelineEndToEnd(t *testing.T) {
 		}
 		return feedEvents == 2 && transcriptEvents == 1
 	})
+	// The worker marks an event processed only after its handler returns, so
+	// the last mark can still be in flight when the handler has run: wait for
+	// it rather than reading the table once.
 	var unprocessed int
-	if err := pool.QueryRow(ctx,
-		"SELECT count(*) FROM outbox WHERE processed_at IS NULL").Scan(&unprocessed); err != nil {
-		t.Fatalf("count outbox: %v", err)
-	}
-	if unprocessed != 0 {
-		t.Fatalf("%d outbox events left unprocessed", unprocessed)
-	}
+	waitFor(t, runCtx, "outbox events to be marked processed", func() bool {
+		if err := pool.QueryRow(ctx,
+			"SELECT count(*) FROM outbox WHERE processed_at IS NULL").Scan(&unprocessed); err != nil {
+			t.Fatalf("count outbox: %v", err)
+		}
+		return unprocessed == 0
+	})
 }
 
 // A transcript job for an unreachable file dead-letters without touching the
