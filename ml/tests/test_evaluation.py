@@ -200,3 +200,31 @@ def test_cohort_report_never_flags_tiny_cohorts() -> None:
 
     text = render([summary("base", 0.9), summary("model", 0.3)], ["base"], {})
     assert "▼" not in text and text.rstrip().endswith("- none")
+
+
+def test_ranking_metrics() -> None:
+    from ml.evaluation import metrics
+
+    ranked = [1, 2, 3, 4]
+    relevant = {1, 3}
+    assert metrics.precision_at_k(ranked, relevant, 2) == 0.5
+    assert metrics.precision_at_k([1], relevant, 5) == 0.2
+    # AP@10: hits at 1 and 3 -> (1/1 + 2/3) / 2
+    assert metrics.average_precision_at_k(ranked, relevant, 10) == pytest.approx((1 + 2 / 3) / 2)
+    assert metrics.average_precision_at_k([1, 3], relevant, 10) == 1.0
+    assert metrics.average_precision_at_k(ranked, set(), 10) == 0.0
+    # Grades: 1->3, 2->0, 3->2, 9 unjudged. Pairs with different grades:
+    # (1,2) right, (1,3) right, (2,3) wrong -> 2/3.
+    grades = {1: 3, 2: 0, 3: 2}
+    assert metrics.pairwise_accuracy([1, 9, 2, 3], grades) == pytest.approx(2 / 3)
+    assert metrics.pairwise_accuracy([2, 2], {2: 1}) is None
+
+
+def test_stage_latency_percentiles() -> None:
+    from ml.evaluation.run import stage_latency
+
+    rows = [{"lexical_ms": float(v), "score_ms": 1.0} for v in range(1, 101)]
+    out = stage_latency(rows)
+    assert out["lexical_ms"] == {"p50": 50.0, "p95": 95.0}
+    assert out["score_ms"]["p95"] == 1.0
+    assert stage_latency(None) == {} and stage_latency([]) == {}

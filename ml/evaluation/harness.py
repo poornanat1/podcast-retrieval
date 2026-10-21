@@ -54,7 +54,8 @@ def _aggregate(rows: list[dict], ks: list[int]) -> dict[str, float]:
         return {}
     out: dict[str, float] = {}
     keys = [f"recall_at_{k}" for k in ks] + [f"hit_rate_at_{k}" for k in ks]
-    keys += ["mrr", "ndcg_at_10", "judged_share_at_10"]
+    keys += ["mrr", "ndcg_at_5", "ndcg_at_10", "map_at_10", "precision_at_5",
+             "precision_at_10", "judged_share_at_10"]
     for key in keys:
         out[key] = round(sum(r[key] for r in rows) / len(rows), 4)
     return out
@@ -160,7 +161,11 @@ def evaluate(
             "relevant": len(relevant),
             "latency_ms": round(elapsed_ms, 2),
             "mrr": metrics.reciprocal_rank(ranked, relevant),
+            "ndcg_at_5": round(metrics.ndcg_at_k(ranked, grades, 5), 4),
             "ndcg_at_10": round(metrics.ndcg_at_k(ranked, grades, 10), 4),
+            "map_at_10": round(metrics.average_precision_at_k(ranked, relevant, 10), 4),
+            "precision_at_5": metrics.precision_at_k(ranked, relevant, 5),
+            "precision_at_10": metrics.precision_at_k(ranked, relevant, 10),
             "judged_share_at_10": round(
                 sum(1 for e in ranked[:10] if e in grades) / max(min(len(ranked), 10), 1), 4
             ),

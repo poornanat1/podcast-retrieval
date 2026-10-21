@@ -48,6 +48,39 @@ def ndcg_at_k(ranked: list[int], grades: dict[int, int], k: int) -> float:
     return dcg_at_k(ranked, grades, k) / ideal_dcg
 
 
+def precision_at_k(ranked: list[int], relevant: set[int], k: int) -> float:
+    """Share of the top k that is relevant (a short list still divides by k)."""
+    return len(set(ranked[:k]) & relevant) / k
+
+
+def average_precision_at_k(ranked: list[int], relevant: set[int], k: int) -> float:
+    """AP@k: mean precision at each relevant position in the top k, over
+    ``min(|relevant|, k)`` so a perfect top k scores 1.0. MAP@k is its mean
+    over queries."""
+    if not relevant:
+        return 0.0
+    hits, total = 0, 0.0
+    for position, episode in enumerate(ranked[:k], start=1):
+        if episode in relevant:
+            hits += 1
+            total += hits / position
+    return total / min(len(relevant), k)
+
+
+def pairwise_accuracy(ranked: list[int], grades: dict[int, int]) -> float | None:
+    """Share of judged pairs in ``ranked`` with different grades that are in
+    the right order (higher grade first). ``None`` when no such pair exists.
+    Unjudged items are left out rather than treated as irrelevant."""
+    judged = [grades[e] for e in ranked if e in grades]
+    right = total = 0
+    for i, upper in enumerate(judged):
+        for lower in judged[i + 1:]:
+            if upper != lower:
+                total += 1
+                right += upper > lower
+    return right / total if total else None
+
+
 def percentile(values: list[float], p: float) -> float:
     """Nearest-rank percentile; 0 for empty input."""
     if not values:

@@ -68,6 +68,19 @@ def load_cold_start(dataset_dir: str | Path, episode_podcast: dict[int, int]) ->
                               set(snapshot_ids), episode_podcast)
 
 
+def stage_latency(stage_ms: list[dict[str, float]] | None) -> dict[str, dict[str, float]]:
+    """p50/p95 per stage for systems that record per-query stage timings
+    (``stage_ms``: one ``{stage: ms}`` dict per search)."""
+    from ml.evaluation.metrics import percentile
+
+    if not stage_ms:
+        return {}
+    stages = sorted({k for row in stage_ms for k in row})
+    return {stage: {"p50": round(percentile([r[stage] for r in stage_ms if stage in r], 50), 2),
+                    "p95": round(percentile([r[stage] for r in stage_ms if stage in r], 95), 2)}
+            for stage in stages}
+
+
 def run_config(config_path: str | Path, database_url: str, use_mlflow: bool,
                cold_start_dataset: str | None = None) -> dict:
     """Evaluate one config; returns the summary dict (and logs to MLflow).
@@ -112,6 +125,9 @@ def run_config(config_path: str | Path, database_url: str, use_mlflow: bool,
         "by_query_type": report.by_query_type,
         "by_query_language": report.by_query_language,
     }
+    stages = stage_latency(getattr(system, "stage_ms", None))
+    if stages:
+        summary["stage_latency_ms"] = stages
 
     if use_mlflow:
         import mlflow
