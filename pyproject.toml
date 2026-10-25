@@ -14,6 +14,10 @@ dependencies = [
     "sentence-transformers>=3,<6",
     "pgvector>=0.3,<1",
     "lightgbm>=4.7.0",
+    "onnx>=1.23.2",
+    "onnxruntime>=1.31.0",
+    "onnxmltools>=1.16.0",
+    "onnxconverter-common>=1.16.0",
 ]
 
 [dependency-groups]

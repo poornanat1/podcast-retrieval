@@ -2,7 +2,7 @@ GO ?= go
 UV ?= uv
 DATABASE_URL ?= postgres://podfind:podfind@localhost:5432/podfind?sslmode=disable
 
-.PHONY: all build test lint ci python-env migrate snapshot dataset relevance-queries relevance-pool relevance-review relevance-export embed embed-transcripts train-ranker llm-queries name-queries mine-negatives pool-export audit-negatives test-split gates significance cohort-report eval eval-all train index reproduce
+.PHONY: all build test lint ci python-env migrate snapshot dataset relevance-queries relevance-pool relevance-review relevance-export embed embed-transcripts train-ranker llm-queries name-queries mine-negatives pool-export audit-negatives test-split gates significance cohort-report eval eval-all train index bundle golden parity promote serve-models prewarm api online-eval reproduce
 
 all: build
 
@@ -124,3 +124,38 @@ index:
 
 reproduce:
 	@echo "make reproduce: not implemented yet" && exit 1
+
+# --- serving -------------------------------------------------------------
+
+TWO_TOWER ?= data/models/two-tower-llm-names-1.0.0-56e2c0708f7e-3b1c13c6
+RANKER ?= data/models/ranker-lambdamart-7bb99f61
+# The promoted bundle by default; pass BUNDLE=data/serving/bundles/<id> before the first promotion.
+BUNDLE ?= data/serving/bundles/$(shell cat data/serving/ACTIVE 2>/dev/null)
+API ?= http://localhost:8080
+
+bundle:
+	$(UV) run python -m ml.serving.bundle --two-tower $(TWO_TOWER) --ranker $(RANKER)
+
+golden:
+	$(UV) run python -m ml.serving.golden --bundle $(BUNDLE)
+
+# Parity needs the API running in debug mode with leg limits above the
+# cold-cache worst case:
+#   PODFIND_DEBUG=1 PODFIND_LEXICAL_TIMEOUT_MS=60000 PODFIND_VECTOR_TIMEOUT_MS=60000 make api
+parity:
+	$(UV) run python -m ml.serving.parity --bundle $(BUNDLE) --api $(API)
+
+promote:
+	$(UV) run python -m ml.serving.promote --bundle $(BUNDLE)
+
+serve-models:
+	$(UV) run python -m ml.serving.server --bundle $(BUNDLE)
+
+prewarm:
+	$(UV) run python -m ml.serving.prewarm --bundle $(BUNDLE)
+
+api:
+	DATABASE_URL=$(DATABASE_URL) $(GO) run ./cmd/api
+
+online-eval:
+	$(UV) run python -m ml.serving.online_eval --api $(API)
