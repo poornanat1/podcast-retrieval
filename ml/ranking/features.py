@@ -32,7 +32,7 @@ from datetime import datetime
 
 import numpy as np
 
-from ml.ranking.candidates import LEGS, CandidateSet
+from ml.ranking.types import LEGS, CandidateSet
 from ml.relevance.queries import normalize
 
 FEATURE_VERSION = "1"

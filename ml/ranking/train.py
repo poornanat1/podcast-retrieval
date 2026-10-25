@@ -47,7 +47,7 @@ import pandas as pd
 
 from ml.evaluation import metrics
 from ml.evaluation.significance import paired_bootstrap
-from ml.ranking import LIGHTGBM_THREADS
+from ml.ranking.lightgbm_runtime import LIGHTGBM_THREADS, load_lightgbm
 
 ORDERINGS = ("ranker", "rrf", "two_tower", "e5", "lexical")
 RANKING_METRICS = ("ndcg_at_5", "ndcg_at_10", "map_at_10", "precision_at_5",
@@ -169,8 +169,7 @@ def features_for(df: pd.DataFrame, queries: dict[str, dict],
 
 
 def train(config: RankerConfig, use_mlflow: bool = True) -> tuple[Path, dict]:
-    import lightgbm as lgb
-
+    lgb = load_lightgbm()
     from ml.datasets.build import code_revision
     from ml.evaluation.run import load_qrels, load_queries
     from ml.ranking.features import FEATURE_VERSION, FEATURES, lexical_score, rrf_score

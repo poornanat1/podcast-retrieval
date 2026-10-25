@@ -22,9 +22,9 @@ from pathlib import Path
 import numpy as np
 import psycopg
 
-from ml.ranking import LIGHTGBM_THREADS
 from ml.ranking.candidates import DEFAULT_DEPTH, CandidateGenerator
 from ml.ranking.features import FEATURE_VERSION, FEATURES, featurize, rrf_score
+from ml.ranking.lightgbm_runtime import LIGHTGBM_THREADS, load_lightgbm
 
 
 class HybridRRF3:
@@ -48,7 +48,7 @@ class Reranker:
 
     def __init__(self, conn: psycopg.Connection, ranker: str, out_of_fold: bool = True,
                  reference_time: str | None = None):
-        import lightgbm as lgb
+        lgb = load_lightgbm()
 
         self.artifact = Path(ranker)
         meta = json.loads((self.artifact / "ranker.json").read_text())

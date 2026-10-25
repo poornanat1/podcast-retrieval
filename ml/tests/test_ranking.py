@@ -121,9 +121,8 @@ def test_torch_and_lightgbm_share_a_process_safely() -> None:
     import sys
 
     script = """
-import ml.ranking
-from ml.ranking import LIGHTGBM_THREADS
-import lightgbm as lgb
+from ml.ranking.lightgbm_runtime import LIGHTGBM_THREADS, load_lightgbm
+lgb = load_lightgbm()
 import numpy as np
 import torch
 x = torch.randn(32, 256, 384)
@@ -144,3 +143,17 @@ print("ok")
     result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True,
                             timeout=300)
     assert result.returncode == 0 and result.stdout.strip() == "ok", result.stderr[-2000:]
+
+
+def test_feature_definitions_import_without_torch_or_lightgbm() -> None:
+    """The model server imports the shared features and must not pull in
+    PyTorch or LightGBM."""
+    import subprocess
+    import sys
+
+    script = ("import sys, ml.ranking.features, ml.ranking.types; "
+              "print(sorted(m for m in ('torch', 'lightgbm') if m in sys.modules))")
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True,
+                            timeout=120)
+    assert result.returncode == 0 and result.stdout.strip() == "[]", result.stderr[-2000:]
+

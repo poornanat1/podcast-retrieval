@@ -16,7 +16,6 @@ candidates and evidence.
 
 from __future__ import annotations
 
-import dataclasses
 import time
 from pathlib import Path
 
@@ -31,8 +30,8 @@ from ml.retrieval.lexical import SEARCH_SQL as LEXICAL_SQL
 from ml.retrieval.lexical import query_params
 from ml.retrieval.vector import SEARCH_SQL as VECTOR_SQL
 from ml.retrieval.vector import enable_iterative_scan, filter_params
+from ml.ranking.types import LEGS, CandidateSet  # noqa: F401  (re-exported)
 
-LEGS = ("lexical", "e5", "two_tower")
 DEFAULT_DEPTH = 50
 
 EVIDENCE_SQL = """
@@ -64,20 +63,6 @@ def _as_array(value) -> np.ndarray:
     if hasattr(value, "to_numpy"):
         value = value.to_numpy()
     return np.asarray(value, dtype=np.float32)
-
-
-@dataclasses.dataclass
-class CandidateSet:
-    """One query's candidates: ``rows`` (one dict per episode, in a stable
-    order) plus the per-stage wall time in milliseconds."""
-
-    query: dict
-    rows: list[dict]
-    timings_ms: dict[str, float]
-
-    @property
-    def episode_ids(self) -> list[int]:
-        return [r["episode_id"] for r in self.rows]
 
 
 class CandidateGenerator:
