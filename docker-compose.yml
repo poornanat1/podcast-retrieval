@@ -4,6 +4,18 @@ services:
     # Parallel index builds (HNSW over ~800k vectors) need real shared
     # memory; the Docker default of 64MB fails with spurious "disk full".
     shm_size: 2gb
+    # Serving reads two ~1.5GB HNSW indexes per search; the 128MB default
+    # buffer cache makes every vector query page through the OS cache.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=2GB
+      - -c
+      - effective_cache_size=5GB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=1GB
     environment:
       POSTGRES_USER: podfind
       POSTGRES_PASSWORD: podfind
