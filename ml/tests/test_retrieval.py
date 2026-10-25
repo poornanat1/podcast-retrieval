@@ -80,3 +80,30 @@ def test_two_tower_index_naming() -> None:
         (1, 7, "Ep", "desc", "en", 60, None, "h", "Show", "Pub", ["News"], ""),
     ])
     assert episodes[0]["podcast_title"] == "Show" and episodes[0]["categories"] == ["News"]
+
+
+def test_shared_sql_comments_hold_no_placeholders() -> None:
+    """psycopg parses %(name)s placeholders even inside SQL comments, so a
+    comment that shows the syntax breaks the statement."""
+    from pathlib import Path
+
+    for path in Path("ml/sql").glob("*.sql"):
+        for line in path.read_text().splitlines():
+            if line.lstrip().startswith("--"):
+                assert "%" not in line, f"{path.name}: {line}"
+
+
+def test_shared_sql_placeholders_match_python_params() -> None:
+    import re
+
+    from ml.retrieval.lexical import SEARCH_SQL as lexical_sql
+    from ml.retrieval.lexical import query_params
+    from ml.retrieval.vector import SEARCH_SQL as vector_sql
+    from ml.retrieval.vector import filter_params
+
+    def names(sql):
+        return set(re.findall(r"%\((\w+)\)s", sql))
+
+    query = {"query_text": "x", "language": "es", "max_duration_seconds": 600}
+    assert names(lexical_sql) == set(query_params(query, 5))
+    assert names(vector_sql) == set(filter_params(query)) | {"model", "qvec", "top_k"}

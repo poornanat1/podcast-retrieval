@@ -29,6 +29,9 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["ml*", "pipelines*"]
 
+[tool.setuptools.package-data]
+"ml.sql" = ["*.sql"]
+
 [tool.pytest.ini_options]
 testpaths = ["ml/tests"]
 

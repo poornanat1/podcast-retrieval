@@ -23,39 +23,21 @@ import numpy as np
 import psycopg
 from pgvector.psycopg import register_vector
 
+from ml import sql
 from ml.embeddings.text import MODEL_ID, build_query
 from ml.embeddings.transcripts import TRANSCRIPT_MODEL_ID
 from ml.embeddings.two_tower_index import model_id_for_artifact
+from ml.ranking.types import LEGS, CandidateSet  # noqa: F401  (re-exported)
 from ml.retrieval.lexical import SEARCH_SQL as LEXICAL_SQL
 from ml.retrieval.lexical import query_params
 from ml.retrieval.vector import SEARCH_SQL as VECTOR_SQL
 from ml.retrieval.vector import enable_iterative_scan, filter_params
-from ml.ranking.types import LEGS, CandidateSet  # noqa: F401  (re-exported)
 
 DEFAULT_DEPTH = 50
 
-EVIDENCE_SQL = """
-WITH q AS (
-    SELECT websearch_to_tsquery(podfind_ts_config(%(parse_lang)s), %(query)s) AS tsq
-)
-SELECT e.id, e.podcast_id, e.title, coalesce(left(e.description, 1000), '') AS description,
-       e.language, e.duration_seconds, e.published_at,
-       p.title AS podcast_title, p.publisher, p.popularity,
-       (t.episode_id IS NOT NULL) AS has_transcript,
-       coalesce(ts_rank(e.search_tsv, q.tsq), 0) AS lex_episode,
-       coalesce(ts_rank(t.search_tsv, q.tsq), 0) AS lex_transcript,
-       coalesce(ts_rank(p.search_tsv, q.tsq), 0) AS lex_podcast
-FROM episodes e
-JOIN podcasts p ON p.id = e.podcast_id
-LEFT JOIN transcripts t ON t.episode_id = e.id
-CROSS JOIN q
-WHERE e.id = ANY(%(ids)s)
-"""
+EVIDENCE_SQL = sql.load("candidate_evidence")
 
-VECTORS_SQL = """
-SELECT episode_id, model, embedding FROM episode_embeddings
-WHERE episode_id = ANY(%(ids)s) AND model = ANY(%(models)s)
-"""
+VECTORS_SQL = sql.load("candidate_vectors")
 
 
 def _as_array(value) -> np.ndarray:

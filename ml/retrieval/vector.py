@@ -12,39 +12,26 @@ from __future__ import annotations
 import psycopg
 from pgvector.psycopg import register_vector
 
+from ml import sql
 from ml.embeddings.text import MODEL_ID, build_query
 
-SEARCH_SQL = """
-WITH nearest AS MATERIALIZED (
-    SELECT e.id, emb.embedding <=> %(qvec)s AS distance
-    FROM episode_embeddings emb
-    JOIN episodes e ON e.id = emb.episode_id
-    WHERE emb.model = %(model)s
-      AND (%(lang)s = '' OR e.language LIKE %(lang)s || '%%')
-      AND (%(max_duration)s = 0 OR e.duration_seconds <= %(max_duration)s)
-      AND (%(published_after)s = '' OR e.published_at >= %(published_after)s::timestamptz)
-      AND (NOT %(no_explicit)s OR NOT e.explicit)
-    ORDER BY distance
-    LIMIT %(top_k)s
-)
-SELECT id FROM nearest ORDER BY distance, id
-"""
+SEARCH_SQL = sql.load("vector_search")
 
 
-# Candidate-list width for HNSW search. Measured on the relevance set's
-# unfiltered queries against an exact scan (2026-10-21): recall of the true
-# top 10 rose from 0.83 to 0.89 (two-tower) and 0.85 to 0.92 (E5) going from
-# 200 to 1000, with no change in median latency (~100 ms).
-EF_SEARCH = 1000
+def session_statements() -> list[str]:
+    """The shared per-connection search settings (``ml/sql/session_settings.sql``)."""
+    return [line.rstrip(";") for line in sql.load("session_settings").splitlines()
+            if line.strip() and not line.startswith("--")]
 
 
 def enable_iterative_scan(conn: psycopg.Connection) -> None:
-    """Iterative scanning (pgvector >= 0.8) keeps filtered ANN queries
-    scanning until LIMIT is satisfied instead of returning short."""
+    """Apply the shared vector search settings to this connection: iterative
+    scans (pgvector >= 0.8) keep filtered ANN queries scanning until LIMIT is
+    satisfied, and a wide ``ef_search`` keeps recall up."""
     try:
         with conn.cursor() as cur:
-            cur.execute("SET hnsw.iterative_scan = relaxed_order")
-            cur.execute(f"SET hnsw.ef_search = {EF_SEARCH}")
+            for statement in session_statements():
+                cur.execute(statement)
         conn.commit()
     except psycopg.Error:
         conn.rollback()
