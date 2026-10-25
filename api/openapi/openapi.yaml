@@ -1,0 +1,174 @@
+openapi: 3.1.0
+info:
+  title: PodFind API
+  version: "1"
+  description: |
+    Text search over podcast episodes (query understanding, hybrid retrieval,
+    learned reranking), episode lookup, and interaction events. Events are
+    attributed server-side from the stored search, so clients send only what
+    they displayed or played. Served by cmd/api.
+paths:
+  /v1/search/text:
+    post:
+      summary: Search episodes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SearchRequest" }
+      responses:
+        "200":
+          description: Ranked results with explanations and versions
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SearchResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+  /v1/search/{queryId}:
+    get:
+      summary: A stored search (query, filters, versions, results with scores and sources)
+      parameters:
+        - { name: queryId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: The stored search }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/episodes/{episodeId}:
+    get:
+      summary: Episode metadata with its show
+      parameters:
+        - { name: episodeId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        "200": { description: The episode }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/events/impression:
+    post:
+      summary: Record displayed results of a search
+      description: Every item must be a result of query_id. Rank, score, candidate sources, and model, feature, and index versions are copied from the stored search.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id, query_id, items]
+              properties:
+                session_id: { type: string, maxLength: 128 }
+                query_id: { type: string }
+                client_time: { type: string, format: date-time }
+                items:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: object
+                    required: [episode_id, displayed_rank]
+                    properties:
+                      episode_id: { type: integer, format: int64 }
+                      displayed_rank: { type: integer, minimum: 1 }
+      responses:
+        "202": { description: Recorded }
+        "400": { $ref: "#/components/responses/Error" }
+  /v1/events/playback/{action}:
+    post:
+      summary: Record playback (start, progress, skip, complete)
+      description: With query_id the episode must be one of that search's results and the event carries its attribution; without it the event is recorded unattributed.
+      parameters:
+        - { name: action, in: path, required: true, schema: { type: string, enum: [start, progress, skip, complete] } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id, episode_id, position_seconds]
+              properties:
+                session_id: { type: string, maxLength: 128 }
+                query_id: { type: string }
+                episode_id: { type: integer, format: int64 }
+                position_seconds: { type: number, minimum: 0 }
+                duration_seconds: { type: number }
+                client_time: { type: string, format: date-time }
+      responses:
+        "202": { description: Recorded }
+        "400": { $ref: "#/components/responses/Error" }
+  /v1/model:
+    get:
+      summary: The model bundle the API serves (versions, index keys, candidate depth)
+      responses:
+        "200": { description: Bundle manifest summary }
+  /healthz:
+    get:
+      summary: Database and model-server health, and that the model server serves the expected bundle
+      responses:
+        "200": { description: Healthy }
+        "503": { description: A dependency is down or serves another bundle }
+components:
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties: { error: { type: string } }
+  schemas:
+    Filters:
+      type: object
+      properties:
+        language: { type: string, description: "ISO 639-1 prefix, e.g. en" }
+        max_duration_seconds: { type: integer }
+        published_after: { type: string, format: date }
+        no_explicit: { type: boolean }
+    SearchRequest:
+      type: object
+      required: [query]
+      properties:
+        query: { type: string, maxLength: 1000, description: Free text; filters are also parsed from it }
+        filters: { $ref: "#/components/schemas/Filters" }
+        session_id: { type: string }
+        limit: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    SearchResponse:
+      type: object
+      properties:
+        query_id: { type: string }
+        query:
+          type: object
+          properties:
+            raw: { type: string }
+            text: { type: string, description: Search text after filter phrases are removed }
+            filters: { $ref: "#/components/schemas/Filters" }
+            parsed: { type: array, items: { type: string } }
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              rank: { type: integer }
+              episode_id: { type: integer, format: int64 }
+              title: { type: string }
+              show: { type: string }
+              publisher: { type: string }
+              language: { type: string }
+              duration_seconds: { type: integer }
+              published_at: { type: string, format: date-time }
+              explicit: { type: boolean }
+              enclosure_url: { type: string }
+              artwork_url: { type: string }
+              score: { type: number }
+              sources: { type: array, items: { type: string, enum: [lexical, e5, two_tower] } }
+              explanation: { type: array, items: { type: string }, description: Built only from matched fields and satisfied filters }
+        versions:
+          type: object
+          properties:
+            bundle_id: { type: string }
+            feature_version: { type: string }
+            index_version: { type: string }
+            ordering: { type: string, enum: [ranker, rrf], description: rrf when reranking failed }
+        legs:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              status: { type: string, enum: [ok, timeout, error, skipped] }
+              count: { type: integer }
+              ms: { type: number }
+        timings_ms: { type: object, additionalProperties: { type: number } }

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PodFind</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header>
+    <h1>PodFind</h1>
+    <p class="tagline">Search podcast episodes by what they are about.</p>
+  </header>
+  <form id="search" autocomplete="off">
+    <input id="q" type="search" placeholder="English episodes under 45 minutes about practical uses of AI" aria-label="Search" required>
+    <button type="submit">Search</button>
+    <fieldset class="filters">
+      <label>Language
+        <select id="language">
+          <option value="">Any</option><option value="en">English</option><option value="es">Spanish</option>
+          <option value="fr">French</option><option value="de">German</option><option value="pt">Portuguese</option>
+        </select>
+      </label>
+      <label>Length
+        <select id="duration">
+          <option value="0">Any</option><option value="900">Under 15 min</option><option value="1800">Under 30 min</option>
+          <option value="2700">Under 45 min</option><option value="3600">Under 1 hour</option>
+        </select>
+      </label>
+      <label>Published
+        <select id="published">
+          <option value="">Any time</option><option value="week">Past week</option><option value="month">Past month</option>
+          <option value="year">Past year</option>
+        </select>
+      </label>
+      <label class="check"><input id="noexplicit" type="checkbox"> No explicit content</label>
+    </fieldset>
+  </form>
+  <section id="status" aria-live="polite"></section>
+  <ol id="results"></ol>
+  <footer id="versions"></footer>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
