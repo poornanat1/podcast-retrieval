@@ -157,3 +157,15 @@ def test_feature_definitions_import_without_torch_or_lightgbm() -> None:
                             timeout=120)
     assert result.returncode == 0 and result.stdout.strip() == "[]", result.stderr[-2000:]
 
+
+def test_missing_numbers_featurize_the_same_from_json_and_pandas() -> None:
+    """Serving sends nulls; training reads Parquet, where nulls become NaN.
+    Both must give the same feature values."""
+    base = row(1)
+    as_null = {**base, "duration_seconds": None, "popularity": None, "show_episodes": None}
+    as_nan = {**base, "duration_seconds": float("nan"), "popularity": float("nan"),
+              "show_episodes": float("nan")}
+    query = {"query_text": "the rest is history"}
+    a = featurize(CandidateSet(query, [as_null], {}), REF)
+    b = featurize(CandidateSet(query, [as_nan], {}), REF)
+    assert np.array_equal(a, b) and not np.isnan(b).any()

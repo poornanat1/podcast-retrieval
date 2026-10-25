@@ -65,6 +65,18 @@ def rrf_score(row: dict, constant: int = RRF_CONSTANT) -> float:
                if row.get(f"{leg}_rank"))
 
 
+def _number(value: object, default: float = 0.0) -> float:
+    """A numeric field with every form of "missing" mapped to one default:
+    ``None`` (database rows, JSON nulls) and NaN (pandas-loaded rows, where
+    ``NaN or 0`` would keep the NaN, since NaN is truthy). Training reads
+    cached Parquet and serving reads JSON, so both must land on the same
+    value."""
+    if value is None:
+        return default
+    number = float(value)
+    return default if math.isnan(number) else number
+
+
 def _tokens(text: str) -> list[str]:
     return [t for t in normalize(text or "").split() if t]
 
@@ -131,9 +143,9 @@ def featurize(candidates: CandidateSet, reference_time: datetime) -> np.ndarray:
             "description_coverage": _coverage(q_tokens, r.get("description") or ""),
             "query_tokens": len(q_tokens),
             "log_age_days": math.log1p(age_days),
-            "log_duration": math.log1p(float(r.get("duration_seconds") or 0)),
-            "log_show_episodes": math.log1p(float(r.get("show_episodes") or 0)),
-            "popularity": float(r.get("popularity") or 0.0),
+            "log_duration": math.log1p(_number(r.get("duration_seconds"))),
+            "log_show_episodes": math.log1p(_number(r.get("show_episodes"))),
+            "popularity": _number(r.get("popularity")),
             "has_transcript": 1.0 if r.get("has_transcript") else 0.0,
         }
         out[i] = [values[name] for name in FEATURES]
