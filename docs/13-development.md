@@ -37,6 +37,11 @@ make ci                                   # lint + tests + build
 | `make significance CANDIDATE_RUN=… BASELINE_RUN=…` | paired bootstrap between two evaluation runs |
 | `make embed-transcripts` | E5 vectors for transcript excerpts (ranker feature) |
 | `make train-ranker RANKER_CONFIG=…` | cross-validated LightGBM ranker over the hybrid candidates |
+| `make bundle TWO_TOWER=… RANKER=…` | export the serving models to an immutable ONNX bundle |
+| `make golden` / `make parity` / `make promote` `BUNDLE=…` | golden examples, training-serving parity report, parity-gated promotion |
+| `make serve-models` / `make api` | model server (port 8081) / Go API and web app (port 8080) |
+| `make prewarm` | load the served vector indexes and rows into memory |
+| `make online-eval API=…` | score the running API on the relevance set |
 | `make cohort-report COMPARE_JSON=…` | per-cohort tables with regressions against the baselines flagged |
 | `make eval EVAL_CONFIG=…` / `eval-all` | evaluate one system / every config in `experiments/eval/` |
 
@@ -57,9 +62,14 @@ ml/
 ├── retrieval/      lexical.py, vector.py, two_tower.py, hybrid.py, popularity.py
 ├── relevance/      queries.py, pool.py, llm_judge.py, review.py, export.py, contracts.py
 ├── evaluation/     harness.py, metrics.py, run.py, compare.py, pool_rerank.py, test_split.py
+├── ranking/        candidates.py, features.py, train.py, system.py, lightgbm_runtime.py
+├── serving/        export.py, bundle.py, server.py, runtime.py, golden.py, parity.py, promote.py, prewarm.py, online_eval.py
+├── sql/            SQL shared with the Go API (*.sql, sql.go)
 └── tests/
-cmd/                catalog-worker, migrate (api, ml-worker: scaffolds)
-internal/           catalog, rss, transcript, discovery, particle, jobs, outbox, objstore, migrate, pgtest, version
+cmd/                api, catalog-worker, migrate (ml-worker: scaffold)
+internal/           api, search, catalog, rss, transcript, discovery, particle, jobs, outbox, objstore, migrate, pgtest, version
+web/                the web app (embedded into the API)
+api/openapi/        OpenAPI description of the API
 migrations/         SQL, embedded into the migrate binary
 experiments/        datasets/, training/, eval/ configs; reports
 data/               relevance/ tracked; snapshots/, datasets/, models/ local

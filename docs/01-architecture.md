@@ -63,9 +63,15 @@ export, and the metrics harness. [06-relevance.md](06-relevance.md),
 training run logs there. **MinIO** holds published dataset versions and
 raw transcript files.
 
-Not built: the API (`cmd/api` prints its version and exits), the ML
-worker (`cmd/ml-worker`, same), a web app, voice input, a reranker,
-deployment manifests, and monitoring.
+**Serving.** The Go API (`cmd/api`, `internal/search`) runs query
+understanding, three concurrent retrieval legs against PostgreSQL, and
+reranking through the model server (`ml/serving`, ONNX Runtime over one
+immutable model bundle), stores every search, and records attributed
+interaction events. It also serves the web app (`web/`). Details in
+[14-serving.md](14-serving.md).
+
+Not built: the ML worker (`cmd/ml-worker` prints its version and exits),
+voice input, deployment manifests, and monitoring.
 
 ## Data flows
 

@@ -88,7 +88,13 @@ the database round trip): lexical p50 ~140 ms with a long tail of several
 seconds on broad queries, E5 vector ~80–160 ms, two-tower ~20 ms (a plain
 encoder forward pass on CPU), hybrid the sum of its legs.
 
+## Online
+
+The Go API runs the same three legs and the same candidate evidence through
+the SQL shared with these Python systems (`ml/sql/`), concurrently, then
+reranks through the model server; query understanding turns free text into
+the structured filters. See [14-serving.md](14-serving.md).
+
 ## Not built
 
-Query understanding (turning a free-text or spoken request into filters)
-and any online serving path.
+Spoken queries.

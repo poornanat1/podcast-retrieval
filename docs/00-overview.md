@@ -30,9 +30,17 @@ Built and measured:
   model registration. [03-data-pipeline.md](03-data-pipeline.md),
   [08-models.md](08-models.md)
 
-Not built yet: the public search API and web app, voice input, a learned
-reranker, deployment manifests, and monitoring. Their directories and Go
-entry points are scaffolds.
+- **Learned ranking** — a LightGBM ranker over the union of the three
+  retrieval legs' candidates, evaluated out of fold.
+  [04-retrieval.md](04-retrieval.md), [08-models.md](08-models.md)
+- **Serving** — a Go API with query understanding, concurrent hybrid
+  retrieval, reranking through an ONNX model server, stored searches,
+  attributed interaction events, and a minimal web app; promotion of a
+  model bundle is gated on training-serving parity checks.
+  [14-serving.md](14-serving.md)
+
+Not built yet: voice input, deployment manifests, and monitoring. The ML
+worker entry point is a scaffold.
 
 ## Documents
 
@@ -51,6 +59,7 @@ entry points are scaffolds.
 | [11-deployment.md](11-deployment.md) | What runs where today |
 | [12-observability.md](12-observability.md) | What is tracked today |
 | [13-development.md](13-development.md) | Setup, Make targets, tests, conventions |
+| [14-serving.md](14-serving.md) | Model bundle, model server, Go API, events, parity and promotion |
 | [data-card.md](data-card.md) | Data sources, label taxonomy, freeze state, training-data coverage |
 | [model-card.md](model-card.md) | The registered retriever: data, evaluation, cold start, failure modes |
 | [licensing.md](licensing.md) | Rights and responsibilities for podcast content |
@@ -58,10 +67,12 @@ entry points are scaffolds.
 ## Layout
 
 ```
-cmd/            catalog-worker, migrate; api and ml-worker are scaffolds
-internal/       catalog, rss, transcript, discovery, particle, jobs, outbox, objstore, migrate, pgtest, version
+cmd/            api, catalog-worker, migrate; ml-worker is a scaffold
+internal/       api, search, catalog, rss, transcript, discovery, particle, jobs, outbox, objstore, migrate, pgtest, version
 migrations/     PostgreSQL schema, applied by `make migrate`
-ml/             datasets, features, models, training, embeddings, hard_negatives, retrieval, relevance, evaluation, tests
+ml/             datasets, features, models, training, embeddings, hard_negatives, retrieval, ranking, serving, sql, relevance, evaluation, tests
+web/            the web app, embedded into the API
+api/openapi/    the API's OpenAPI description
 experiments/    datasets/, training/, eval/ configs and the reports
 data/           relevance/ (tracked); snapshots/, datasets/, models/ (local, gitignored)
 deploy/         compose init script; helm/ and openshift/ are placeholders

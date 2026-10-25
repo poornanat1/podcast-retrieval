@@ -71,7 +71,7 @@ re-encoding incremental.
 
 Searches run with `hnsw.iterative_scan = relaxed_order`, so filtered
 queries keep scanning until the limit is met, and `hnsw.ef_search = 1000`
-(`ml/retrieval/vector.py`). Relaxed order can return rows slightly out of
+(`ml/sql/session_settings.sql`, shared with the Go API). Relaxed order can return rows slightly out of
 distance order, so the scan is materialized and re-sorted by exact
 distance before results leave the database.
 

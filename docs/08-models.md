@@ -202,7 +202,7 @@ fixed in the config; tuning them on these folds would leak.
 
 Results, latency, and the decision are in
 [experiments/ranker-report.md](../experiments/ranker-report.md): out of
-fold, the ranker reaches 0.790 NDCG@10 against 0.766 for RRF over the same
+fold, the ranker reaches 0.794 NDCG@10 against 0.766 for RRF over the same
 candidates and 0.758 for the two-tower model alone, for about 10 ms per
 query.
 

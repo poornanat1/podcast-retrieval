@@ -22,7 +22,8 @@ as hard filters.
 | Datasets | Deterministic builder: snapshot + config + code revision → identical versioned Parquet splits. Generators for title queries, weak topic labels, and LLM-written queries with mined hard negatives. |
 | Learned ranker | LightGBM LambdaRank over the union of lexical, E5, and two-tower candidates; 31 shared feature definitions; query-grouped cross-validation. |
 | Two-tower model | PyTorch, shared E5 encoder, structured episode features, shared training/serving feature contract, resumable training with judged-pool validation, distillation, hard-negative mining and auditing, acceptance gates with MLflow registration. |
-| Serving API, web app, voice, deployment, monitoring | Not built. Entry points and directories exist as scaffolds. |
+| Serving | Go API with query understanding, concurrent three-leg retrieval, reranking through an ONNX model server, stored searches, attributed impression and playback events, and a minimal web app. A model bundle is promoted only after training-serving parity checks pass. |
+| Voice, deployment, monitoring | Not built. |
 
 ## Results so far
 
@@ -34,7 +35,7 @@ On the 180-query relevance set, latest judgment pool:
 | pretrained E5 vector search | 0.720 | 0.730 | 0.369 |
 | fine-tuned two-tower | 0.758 | 0.770 | 0.421 |
 | RRF over lexical, E5, and two-tower | 0.766 | 0.782 | 0.475 |
-| learned ranker over the same candidates | 0.790 | 0.812 | 0.514 |
+| learned ranker over the same candidates | 0.794 | 0.817 | 0.514 |
 
 The fine-tuned two-tower model is trained on LLM-written queries plus
 show-name and publisher-name queries, with lexical-mined and random
@@ -59,10 +60,11 @@ in the [model card](docs/model-card.md). Write-ups:
 ## Layout
 
 ```
-cmd/            Go entry points: catalog-worker, migrate (api and ml-worker are scaffolds)
-internal/       Go packages: catalog, rss, transcript, discovery, jobs, outbox, objstore
+cmd/            Go entry points: api, catalog-worker, migrate (ml-worker is a scaffold)
+internal/       Go packages: api, search, catalog, rss, transcript, discovery, jobs, outbox, objstore
 migrations/     PostgreSQL schema
-ml/             Python: datasets, features, models, training, embeddings, retrieval, relevance, evaluation
+ml/             Python: datasets, features, models, training, embeddings, retrieval, ranking, serving, relevance, evaluation
+web/            Web app served by the API
 experiments/    Checked-in dataset, training, and eval configs, and reports
 data/           Relevance set (tracked); snapshots, datasets, models (local)
 docs/           Documentation, data card, licensing notes
@@ -70,7 +72,8 @@ docs/           Documentation, data card, licensing notes
 
 ## Running it
 
-Requires Go 1.26+, [uv](https://docs.astral.sh/uv/), and Docker.
+Requires Go 1.26+, [uv](https://docs.astral.sh/uv/), and Docker; on macOS,
+`brew install libomp` for LightGBM.
 
 ```sh
 cp .env.example .env            # optional: Particle API key for discovery
@@ -83,7 +86,17 @@ make embed                                     # E5 vectors for the catalog
 make eval-all                                  # every system against the relevance set
 make snapshot && make dataset                  # versioned training data
 make train && make index                       # two-tower model and its index
+make train-ranker                              # the learned ranker
+
+make bundle                                    # ONNX serving bundle, printed as data/serving/bundles/<id>
+export BUNDLE=data/serving/bundles/<id>
+make golden && make prewarm
+make serve-models &                            # model server on :8081
+PODFIND_DEBUG=1 PODFIND_LEXICAL_TIMEOUT_MS=60000 PODFIND_VECTOR_TIMEOUT_MS=60000 make api &
+make parity API=http://localhost:8080 && make promote   # parity gates promotion; restart the API without debug after
 ```
+
+Then open http://localhost:8080.
 
 Every target is in the [Makefile](Makefile); the docs start at
 [docs/00-overview.md](docs/00-overview.md).

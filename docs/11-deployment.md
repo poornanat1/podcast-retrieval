@@ -1,6 +1,7 @@
 # Deployment
 
-Nothing is deployed. What runs today runs locally through Docker Compose:
+Nothing is deployed. What runs today runs locally, the infrastructure
+through Docker Compose:
 
 | service | image / build | role |
 |---|---|---|
@@ -10,12 +11,15 @@ Nothing is deployed. What runs today runs locally through Docker Compose:
 | `catalog-worker` | built from the repo `Dockerfile` | ingestion (stopped during the corpus freeze) |
 
 The Python jobs (embedding, training, evaluation) run on the host with
-`uv`, against the compose services.
+`uv`, against the compose services. The serving processes also run on the
+host: the model server (`make serve-models`, port 8081) and the Go API
+(`make api`, port 8080). Their configuration, start order, and memory
+needs are in [14-serving.md](14-serving.md#operations).
 
-`deploy/helm/` and `deploy/openshift/` are empty placeholders; `cmd/api`
-and `cmd/ml-worker` print their version and exit. Kubernetes manifests,
-probes, autoscaling, canary rollout, and the model server are planned
-work and will be documented when they exist.
+`deploy/helm/` and `deploy/openshift/` are empty placeholders, and
+`cmd/ml-worker` prints its version and exits. Kubernetes manifests, probes,
+autoscaling, and canary rollout are planned work and will be documented
+when they exist.
 
 Two practical notes from running the stack on a laptop:
 
@@ -25,3 +29,6 @@ Two practical notes from running the stack on a laptop:
   (`ml/training/sync_run.py`).
 - Restarting the whole stack starts the catalog worker; while the corpus
   is frozen, start only the services you need.
+- Postgres runs with `shared_buffers=2GB` (`docker-compose.yml`). Vector
+  search is memory-bound: serving needs about 6 GB of indexes and vector
+  rows hot, more than an 8 GB Docker VM leaves for the cache.

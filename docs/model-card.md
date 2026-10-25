@@ -87,13 +87,22 @@ after the training snapshot (+0.16); see
 
 **As a candidate source.** The learned ranker
 ([ranker-report.md](../experiments/ranker-report.md)) reorders this
-model's top 50 together with lexical and E5 candidates and reaches 0.790
+model's top 50 together with lexical and E5 candidates and reaches 0.794
 NDCG@10.
 
 **Ablations.** Content features carry the model: a learned-show-id-only
 tower scores 0.054 NDCG@10. Adding learned ids to metadata hurts
 publisher-name queries. Adding a transcript excerpt is the best single
 model (0.744) but not distinguishable from this one on 180 queries.
+
+## Serving
+
+Served as the query tower and candidate index of model bundle
+`42df3779d7cf` (with the E5 query encoder and the learned ranker), exported
+to ONNX. On the 30 golden parity queries the ONNX query tower matches
+PyTorch to 4e-7, and the production pipeline returns the same candidates,
+features (to 1e-6), and top 10 as the training-side code; see
+[experiments/serving-report.md](../experiments/serving-report.md).
 
 ## Known failure modes
 
