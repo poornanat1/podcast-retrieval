@@ -30,3 +30,9 @@ data/backups/
 data/relevance/tasks.jsonl
 data/relevance/judged-episodes.parquet
 data/serving/
+
+# Speech test set audio (rebuilt from the config; the manifest is tracked)
+data/speech/*/clips/
+data/speech/*/references/
+data/speech/*/jobs.jsonl
+data/speech/*/clips.jsonl

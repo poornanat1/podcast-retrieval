@@ -1,0 +1,11 @@
+# The speech test set's synthesizer runs in its own environment: Chatterbox
+# pins torch 2.6 and numpy 1.x, which the main project cannot use.
+#   uv run --project ml/speech/tts python ml/speech/tts/synthesize.py --jobs <jobs.jsonl>
+[project]
+name = "podfind-tts"
+version = "0.0.0"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "chatterbox-tts>=0.1.4,<0.2",
+    "setuptools<80",  # chatterbox's watermarker imports pkg_resources
+]

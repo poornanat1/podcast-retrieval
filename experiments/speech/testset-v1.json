@@ -1,0 +1,112 @@
+{
+  "name": "speech-testset-v1",
+  "relevance_dir": "data/relevance",
+  "out_dir": "data/speech/testset-v1",
+  "seed": 20261026,
+  "sample_rate": 24000,
+  "voices": {
+    "en_us": {
+      "say": "Samantha",
+      "locale": "en_US",
+      "language": "en"
+    },
+    "en_gb": {
+      "say": "Daniel",
+      "locale": "en_GB",
+      "language": "en"
+    },
+    "en_au": {
+      "say": "Karen",
+      "locale": "en_AU",
+      "language": "en"
+    },
+    "en_in": {
+      "say": "Rishi",
+      "locale": "en_IN",
+      "language": "en"
+    },
+    "en_ie": {
+      "say": "Moira",
+      "locale": "en_IE",
+      "language": "en"
+    },
+    "en_za": {
+      "say": "Tessa",
+      "locale": "en_ZA",
+      "language": "en"
+    },
+    "es": {
+      "say": "Paulina",
+      "locale": "es_MX",
+      "language": "es"
+    },
+    "fr": {
+      "say": "Thomas",
+      "locale": "fr_FR",
+      "language": "fr"
+    },
+    "de": {
+      "say": "Anna",
+      "locale": "de_DE",
+      "language": "de"
+    },
+    "pt": {
+      "say": "Luciana",
+      "locale": "pt_BR",
+      "language": "pt"
+    }
+  },
+  "reference_text": {
+    "en": "Welcome back to the show. Today we are talking about the history of radio, and why people still love listening to long conversations.",
+    "es": "Bienvenidos al programa. Hoy hablamos de la historia de la radio y de por qué la gente sigue escuchando conversaciones largas.",
+    "fr": "Bienvenue dans l'émission. Aujourd'hui, nous parlons de l'histoire de la radio et de l'amour des longues conversations.",
+    "de": "Willkommen zurück zur Sendung. Heute sprechen wir über die Geschichte des Radios und warum Menschen lange Gespräche lieben.",
+    "pt": "Bem-vindos ao programa. Hoje falamos sobre a história do rádio e por que as pessoas ainda adoram ouvir conversas longas."
+  },
+  "base_voice": "en_us",
+  "accents": [
+    "en_gb",
+    "en_au",
+    "en_in",
+    "en_ie",
+    "en_za"
+  ],
+  "synthesis": {
+    "exaggeration": 0.5,
+    "cfg_weight": 0.5
+  },
+  "text_language": {
+    "q544ef574": "fr",
+    "q7149ba9d": "de",
+    "q77ddf63a": "de",
+    "q9ee3557c": "pt",
+    "qd92ca4ef": "es",
+    "qf33dc047": "es"
+  },
+  "subset_per_type": {
+    "navigational": 15,
+    "entity": 10,
+    "exploratory": 20,
+    "filtered": 15
+  },
+  "conversational_per_type": {
+    "exploratory": 25,
+    "filtered": 15
+  },
+  "conditions": [
+    "noise_20db",
+    "noise_10db",
+    "noise_5db",
+    "noise_0db",
+    "babble_10db",
+    "babble_5db",
+    "telephone",
+    "laptop_mic",
+    "reverb"
+  ],
+  "speeds": {
+    "slow": 0.8,
+    "fast": 1.3,
+    "very_fast": 1.6
+  }
+}

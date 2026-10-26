@@ -2,7 +2,7 @@ GO ?= go
 UV ?= uv
 DATABASE_URL ?= postgres://podfind:podfind@localhost:5432/podfind?sslmode=disable
 
-.PHONY: all build test lint ci python-env migrate snapshot dataset relevance-queries relevance-pool relevance-review relevance-export embed embed-transcripts train-ranker llm-queries name-queries mine-negatives pool-export audit-negatives test-split gates significance cohort-report eval eval-all train index bundle golden parity promote serve-models prewarm api online-eval serve-speech reproduce
+.PHONY: all build test lint ci python-env migrate snapshot dataset relevance-queries relevance-pool relevance-review relevance-export embed embed-transcripts train-ranker llm-queries name-queries mine-negatives pool-export audit-negatives test-split gates significance cohort-report eval eval-all train index bundle golden parity promote serve-models prewarm api online-eval serve-speech speech-testset speech-eval reproduce
 
 all: build
 
@@ -153,6 +153,15 @@ serve-models:
 
 serve-speech:
 	$(UV) run python -m ml.speech.server
+
+SPEECH_CONFIG ?= experiments/speech/testset-v1.json
+SPEECH_SET ?= data/speech/testset-v1
+
+speech-testset:
+	$(UV) run python -m ml.speech.testset --config $(SPEECH_CONFIG)
+
+speech-eval:
+	$(UV) run python -m ml.speech.evaluate --testset $(SPEECH_SET) --api $(API) --json-out experiments/speech/results-v1.json
 
 prewarm:
 	$(UV) run python -m ml.serving.prewarm --bundle $(BUNDLE)
