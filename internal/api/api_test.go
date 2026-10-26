@@ -20,6 +20,7 @@ func TestRoutingAndRequestValidation(t *testing.T) {
 		{"POST", "/v1/search/text", `{"query": "x", "unknown": 1}`, http.StatusBadRequest, "unknown field"},
 		{"POST", "/v1/search/text", `{not json`, http.StatusBadRequest, "error"},
 		{"POST", "/v1/events/impression", `[]`, http.StatusBadRequest, "error"},
+		{"POST", "/v1/search/voice", `{"query": "x"}`, http.StatusBadRequest, "error"},
 		{"GET", "/v1/episodes/abc", "", http.StatusNotFound, "not found"},
 		{"DELETE", "/v1/search/text", "", http.StatusMethodNotAllowed, ""},
 		{"GET", "/", "", http.StatusOK, "<title>PodFind</title>"},

@@ -4,6 +4,10 @@
 //
 //	DATABASE_URL                 Postgres DSN (default: local compose stack)
 //	MODEL_SERVER_URL             model server base URL (default http://127.0.0.1:8081)
+//	SPEECH_SERVER_URL            speech server base URL (default http://127.0.0.1:8082);
+//	                             voice search is unavailable while it is down
+//	OBJECT_STORE_*               object storage for voice recordings a user asked
+//	                             to keep; unset refuses retention
 //	PODFIND_API_ADDR             listen address (default :8080)
 //	PODFIND_LEXICAL_TIMEOUT_MS   lexical leg time limit (default 300)
 //	PODFIND_VECTOR_TIMEOUT_MS    vector leg time limit (default 1500)
@@ -31,6 +35,7 @@ import (
 
 	"podfind/internal/api"
 	"podfind/internal/migrate"
+	"podfind/internal/objstore"
 	"podfind/internal/search"
 	"podfind/internal/version"
 	"podfind/migrations"
@@ -88,10 +93,20 @@ func main() {
 		log.Fatalf("model server: %v", err)
 	}
 
+	store, err := objstore.NewFromEnv()
+	if err != nil {
+		log.Fatalf("object store: %v", err)
+	}
+	var recordings search.Recordings
+	if store != nil {
+		recordings = store
+	}
 	svc := &search.Service{
-		Pool:  pool,
-		Model: model,
-		Debug: os.Getenv("PODFIND_DEBUG") == "1",
+		Pool:       pool,
+		Model:      model,
+		Speech:     search.NewSpeechClient(env("SPEECH_SERVER_URL", "http://127.0.0.1:8082"), 30*time.Second),
+		Recordings: recordings,
+		Debug:      os.Getenv("PODFIND_DEBUG") == "1",
 		Retriever: &search.Retriever{
 			Pool: pool, Model: model, Info: info,
 			LexicalTimeout: envMillis("PODFIND_LEXICAL_TIMEOUT_MS", 300),
@@ -111,7 +126,7 @@ func main() {
 		_ = srv.Shutdown(shutdown)
 	}()
 	slog.Info("podfind api", "version", version.String(), "addr", srv.Addr, "bundle", info.BundleID,
-		"feature_version", info.FeatureVersion, "debug", svc.Debug)
+		"feature_version", info.FeatureVersion, "debug", svc.Debug, "recordings", store != nil)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("serve: %v", err)
 	}

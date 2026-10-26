@@ -51,3 +51,11 @@ func (s *Store) Put(ctx context.Context, key string, data []byte, contentType st
 	}
 	return nil
 }
+
+// Delete removes key; a missing object is not an error.
+func (s *Store) Delete(ctx context.Context, key string) error {
+	if err := s.client.RemoveObject(ctx, s.bucket, key, minio.RemoveObjectOptions{}); err != nil {
+		return fmt.Errorf("delete %s/%s: %w", s.bucket, key, err)
+	}
+	return nil
+}

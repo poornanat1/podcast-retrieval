@@ -6,10 +6,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"podfind/internal/search"
@@ -28,6 +31,7 @@ type Handler struct {
 func New(svc *search.Service, web fs.FS) *Handler {
 	h := &Handler{Search: svc, Web: web, mux: http.NewServeMux()}
 	h.mux.HandleFunc("POST /v1/search/text", h.searchText)
+	h.mux.HandleFunc("POST /v1/search/voice", h.searchVoice)
 	h.mux.HandleFunc("GET /v1/search/{queryId}", h.getSearch)
 	h.mux.HandleFunc("GET /v1/episodes/{episodeId}", h.getEpisode)
 	h.mux.HandleFunc("POST /v1/events/impression", h.impression)
@@ -72,6 +76,9 @@ func writeError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 	case errors.Is(err, search.ErrNotFound):
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+	case errors.Is(err, search.ErrUnavailable):
+		slog.Error("dependency unavailable", "error", err)
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
 	case errors.Is(err, context.DeadlineExceeded):
 		writeJSON(w, http.StatusGatewayTimeout, map[string]string{"error": "timed out"})
 	default:
@@ -96,6 +103,61 @@ func (h *Handler) searchText(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp, err := h.Search.Search(r.Context(), req)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// searchVoice takes a multipart form: the WAV recording as "audio", and
+// the text search's fields as form values (session_id, limit, language,
+// filters as JSON, retain as "true"). The recording lives only in this
+// request unless retain is set and a store is configured.
+func (h *Handler) searchVoice(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, search.MaxVoiceBytes+maxBody)
+	if err := r.ParseMultipartForm(search.MaxVoiceBytes); err != nil {
+		writeError(w, errors.Join(search.ErrBadRequest, err))
+		return
+	}
+	defer r.MultipartForm.RemoveAll() //nolint:errcheck
+	file, _, err := r.FormFile("audio")
+	if err != nil {
+		writeError(w, fmt.Errorf("%w: a WAV file is required as \"audio\"", search.ErrBadRequest))
+		return
+	}
+	defer file.Close()
+	audio, err := io.ReadAll(io.LimitReader(file, search.MaxVoiceBytes+1))
+	if err != nil {
+		writeError(w, errors.Join(search.ErrBadRequest, err))
+		return
+	}
+	req := search.VoiceRequest{Audio: audio, Language: r.FormValue("language"),
+		SessionID: r.FormValue("session_id"), Retain: r.FormValue("retain") == "true",
+		Debug: r.FormValue("debug") == "true", SkipUnderstanding: r.FormValue("skip_understanding") == "true"}
+	if v := r.FormValue("filters"); v != "" {
+		dec := json.NewDecoder(strings.NewReader(v))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&req.Filters); err != nil {
+			writeError(w, fmt.Errorf("%w: filters: %v", search.ErrBadRequest, err))
+			return
+		}
+	}
+	if v := r.FormValue("limit"); v != "" {
+		if req.Limit, err = strconv.Atoi(v); err != nil {
+			writeError(w, fmt.Errorf("%w: limit must be an integer", search.ErrBadRequest))
+			return
+		}
+	}
+	if v := r.FormValue("reference_time"); v != "" {
+		t, err := time.Parse(time.RFC3339Nano, v)
+		if err != nil {
+			writeError(w, fmt.Errorf("%w: reference_time must be RFC 3339", search.ErrBadRequest))
+			return
+		}
+		req.ReferenceTime = &t
+	}
+	resp, err := h.Search.SearchVoice(r.Context(), req)
 	if err != nil {
 		writeError(w, err)
 		return

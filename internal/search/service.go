@@ -28,6 +28,15 @@ type Request struct {
 	Debug             bool       `json:"debug,omitempty"`
 	ReferenceTime     *time.Time `json:"reference_time,omitempty"`
 	SkipUnderstanding bool       `json:"skip_understanding,omitempty"` // use Query and Filters verbatim
+
+	// How the query was entered (typed by default). Clients may link an
+	// edited transcript to its voice search; see Input.
+	Input *Input `json:"input,omitempty"`
+
+	// Set by SearchVoice: the clock started before transcription, and the
+	// transcription time to record alongside the search's own timings.
+	started time.Time
+	timings map[string]float64
 }
 
 // Result is one ranked episode as served.
@@ -60,6 +69,7 @@ type Versions struct {
 type Response struct {
 	QueryID   string                `json:"query_id"`
 	Query     Understood            `json:"query"`
+	Input     Input                 `json:"input"`
 	Results   []Result              `json:"results"`
 	Versions  Versions              `json:"versions"`
 	Legs      map[string]*LegResult `json:"legs"`
@@ -79,11 +89,13 @@ type Debug struct {
 
 // Service runs searches end to end.
 type Service struct {
-	Pool      *pgxpool.Pool
-	Retriever *Retriever
-	Model     *ModelClient
-	Debug     bool // allow Request.Debug and Request.ReferenceTime
-	Now       func() time.Time
+	Pool       *pgxpool.Pool
+	Retriever  *Retriever
+	Model      *ModelClient
+	Speech     *SpeechClient // voice search; nil makes it unavailable
+	Recordings Recordings    // retained voice recordings; nil refuses retention
+	Debug      bool          // allow Request.Debug and Request.ReferenceTime
+	Now        func() time.Time
 }
 
 const (
@@ -107,9 +119,17 @@ var ErrBadRequest = errors.New("bad request")
 // the search, and returns the ranked results.
 func (s *Service) Search(ctx context.Context, req Request) (Response, error) {
 	start := time.Now()
+	if !req.started.IsZero() {
+		start = req.started
+	}
 	now := time.Now
 	if s.Now != nil {
 		now = s.Now
+	}
+	if req.started.IsZero() { // a client request; SearchVoice sets its own Input
+		if err := s.checkInput(ctx, req.Input, req.SessionID); err != nil {
+			return Response{}, err
+		}
 	}
 	if len(req.Query) > maxQueryBytes {
 		return Response{}, fmt.Errorf("%w: query longer than %d bytes", ErrBadRequest, maxQueryBytes)
@@ -138,8 +158,15 @@ func (s *Service) Search(ctx context.Context, req Request) (Response, error) {
 	if err != nil {
 		return Response{}, err
 	}
+	input := Input{Mode: InputText}
+	if req.Input != nil && req.Input.Mode != "" {
+		input = *req.Input
+	}
+	for k, v := range req.timings {
+		ret.TimingsMS[k] = v
+	}
 	resp := Response{
-		QueryID: newQueryID(), Query: u, Legs: ret.Legs, TimingsMS: ret.TimingsMS,
+		QueryID: newQueryID(), Query: u, Input: input, Legs: ret.Legs, TimingsMS: ret.TimingsMS,
 		CreatedAt: now().UTC(),
 		Versions: Versions{BundleID: s.Retriever.Info.BundleID, FeatureVersion: s.Retriever.Info.FeatureVersion,
 			IndexVersion: s.Retriever.Info.IndexVersion(), Ordering: "ranker"},
@@ -283,6 +310,7 @@ func (s *Service) save(ctx context.Context, req Request, resp Response) error {
 	legs, _ := json.Marshal(resp.Legs)
 	timings, _ := json.Marshal(resp.TimingsMS)
 	results, _ := json.Marshal(stored)
+	input, _ := json.Marshal(resp.Input)
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -290,11 +318,11 @@ func (s *Service) save(ctx context.Context, req Request, resp Response) error {
 	defer tx.Rollback(ctx) //nolint:errcheck
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO searches (query_id, session_id, raw_query, query_text, filters, bundle_id,
-		                      feature_version, index_version, ordering, legs, timings_ms, results, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+		                      feature_version, index_version, ordering, legs, timings_ms, results, created_at, input)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
 		resp.QueryID, req.SessionID, resp.Query.Raw, resp.Query.Text, string(filters), resp.Versions.BundleID,
 		resp.Versions.FeatureVersion, resp.Versions.IndexVersion, resp.Versions.Ordering, string(legs),
-		string(timings), string(results), resp.CreatedAt); err != nil {
+		string(timings), string(results), resp.CreatedAt, string(input)); err != nil {
 		return fmt.Errorf("save search: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
@@ -303,7 +331,7 @@ func (s *Service) save(ctx context.Context, req Request, resp Response) error {
 		VALUES ('search', $1, $2, $3, $4, $5, $6, $7)`,
 		resp.CreatedAt, req.SessionID, resp.QueryID, resp.Versions.FeatureVersion, resp.Versions.BundleID,
 		resp.Versions.IndexVersion, jsonText(map[string]any{"query": resp.Query.Raw, "results": len(resp.Results),
-			"ordering": resp.Versions.Ordering})); err != nil {
+			"ordering": resp.Versions.Ordering, "input_mode": resp.Input.Mode})); err != nil {
 		return fmt.Errorf("search event: %w", err)
 	}
 	return tx.Commit(ctx)
@@ -316,6 +344,7 @@ type StoredSearch struct {
 	Raw       string                `json:"raw_query"`
 	Text      string                `json:"query_text"`
 	Filters   Filters               `json:"filters"`
+	Input     Input                 `json:"input"`
 	Versions  Versions              `json:"versions"`
 	Legs      map[string]*LegResult `json:"legs"`
 	TimingsMS map[string]float64    `json:"timings_ms"`
@@ -329,14 +358,14 @@ var ErrNotFound = errors.New("not found")
 // GetSearch loads a stored search.
 func (s *Service) GetSearch(ctx context.Context, queryID string) (StoredSearch, error) {
 	var out StoredSearch
-	var filters, legs, timings, results []byte
+	var filters, legs, timings, results, input []byte
 	err := s.Pool.QueryRow(ctx, `
 		SELECT query_id, session_id, raw_query, query_text, filters, bundle_id, feature_version,
-		       index_version, ordering, legs, timings_ms, results, created_at
+		       index_version, ordering, legs, timings_ms, results, created_at, input
 		FROM searches WHERE query_id = $1`, queryID).Scan(
 		&out.QueryID, &out.SessionID, &out.Raw, &out.Text, &filters, &out.Versions.BundleID,
 		&out.Versions.FeatureVersion, &out.Versions.IndexVersion, &out.Versions.Ordering, &legs,
-		&timings, &results, &out.CreatedAt)
+		&timings, &results, &out.CreatedAt, &input)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return out, ErrNotFound
 	}
@@ -347,6 +376,7 @@ func (s *Service) GetSearch(ctx context.Context, queryID string) (StoredSearch, 
 	_ = json.Unmarshal(legs, &out.Legs)
 	_ = json.Unmarshal(timings, &out.TimingsMS)
 	_ = json.Unmarshal(results, &out.Results)
+	_ = json.Unmarshal(input, &out.Input)
 	return out, nil
 }
 
