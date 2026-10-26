@@ -7,7 +7,7 @@ body { margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-seri
 main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
 h1 { margin: 0; font-size: 28px; }
 .tagline { margin: 4px 0 20px; color: var(--muted); }
-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+form { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; }
 input[type=search] { font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; min-width: 0; }
 button { font: inherit; padding: 10px 18px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; cursor: pointer; }
 .filters { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 12px 20px; border: 0; padding: 4px 0 0; margin: 0; color: var(--muted); }
@@ -24,3 +24,9 @@ li.result img { width: 64px; height: 64px; border-radius: 8px; object-fit: cover
 .why li { background: var(--chip); border-radius: 999px; padding: 1px 10px; font-size: 13px; }
 audio { width: 100%; max-width: 420px; height: 32px; }
 footer { margin-top: 24px; color: var(--muted); font-size: 12px; }
+.mic { background: var(--chip); color: var(--fg); padding: 10px 14px; font-size: 18px; line-height: 1; }
+.mic[aria-pressed=true] { background: #d6463a; color: #fff; animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.6; } }
+.transcript { margin: 0 0 8px; padding: 8px 12px; border: 1px dashed var(--line); border-radius: 8px; font-size: 13px; color: var(--muted); }
+.transcript b { color: var(--fg); font-weight: 500; }
+.data a { color: inherit; }

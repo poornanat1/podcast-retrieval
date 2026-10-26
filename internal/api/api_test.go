@@ -27,6 +27,8 @@ func TestRoutingAndRequestValidation(t *testing.T) {
 		{"DELETE", "/v1/search/text", "", http.StatusMethodNotAllowed, ""},
 		{"GET", "/", "", http.StatusOK, "<title>PodFind</title>"},
 		{"GET", "/app.js", "", http.StatusOK, "/v1/events/impression"},
+		{"GET", "/app.js", "", http.StatusOK, "/v1/search/voice"},
+		{"GET", "/", "", http.StatusOK, `id="mic"`},
 	}
 	for _, c := range cases {
 		req := httptest.NewRequest(c.method, c.path, strings.NewReader(c.body))

@@ -13,7 +13,8 @@
     <p class="tagline">Search podcast episodes by what they are about.</p>
   </header>
   <form id="search" autocomplete="off">
-    <input id="q" type="search" placeholder="English episodes under 45 minutes about practical uses of AI" aria-label="Search" required>
+    <input id="q" type="search" placeholder="English episodes under 45 minutes about practical uses of AI" aria-label="Search">
+    <button type="button" id="mic" class="mic" aria-label="Search by voice" aria-pressed="false" title="Search by voice">&#127908;</button>
     <button type="submit">Search</button>
     <fieldset class="filters">
       <label>Language
@@ -35,11 +36,16 @@
         </select>
       </label>
       <label class="check"><input id="noexplicit" type="checkbox"> No explicit content</label>
+      <label class="check" title="Recordings are deleted right after transcription unless you ask to keep them"><input id="retain" type="checkbox"> Keep my voice recordings</label>
     </fieldset>
   </form>
   <section id="status" aria-live="polite"></section>
+  <section id="transcript" class="transcript" hidden></section>
   <ol id="results"></ol>
-  <footer id="versions"></footer>
+  <footer>
+    <div id="versions"></div>
+    <div class="data">Your data on this device's session: <a id="export" href="#">export</a> · <a id="delete" href="#">delete</a></div>
+  </footer>
 </main>
 <script src="app.js"></script>
 </body>
