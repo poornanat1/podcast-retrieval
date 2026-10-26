@@ -22,6 +22,8 @@ func TestRoutingAndRequestValidation(t *testing.T) {
 		{"POST", "/v1/events/impression", `[]`, http.StatusBadRequest, "error"},
 		{"POST", "/v1/search/voice", `{"query": "x"}`, http.StatusBadRequest, "error"},
 		{"GET", "/v1/episodes/abc", "", http.StatusNotFound, "not found"},
+		{"GET", "/v1/me/data", "", http.StatusBadRequest, "session_id"},
+		{"DELETE", "/v1/me/data?session_id=", "", http.StatusBadRequest, "session_id"},
 		{"DELETE", "/v1/search/text", "", http.StatusMethodNotAllowed, ""},
 		{"GET", "/", "", http.StatusOK, "<title>PodFind</title>"},
 		{"GET", "/app.js", "", http.StatusOK, "/v1/events/impression"},

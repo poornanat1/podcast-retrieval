@@ -36,6 +36,8 @@ func New(svc *search.Service, web fs.FS) *Handler {
 	h.mux.HandleFunc("GET /v1/episodes/{episodeId}", h.getEpisode)
 	h.mux.HandleFunc("POST /v1/events/impression", h.impression)
 	h.mux.HandleFunc("POST /v1/events/playback/{action}", h.playback)
+	h.mux.HandleFunc("GET /v1/me/data", h.exportData)
+	h.mux.HandleFunc("DELETE /v1/me/data", h.deleteData)
 	h.mux.HandleFunc("GET /v1/model", h.model)
 	h.mux.HandleFunc("GET /healthz", h.health)
 	if web != nil {
@@ -213,6 +215,26 @@ func (h *Handler) playback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]int{"recorded": 1})
+}
+
+// Data controls, keyed by session id (the API has no accounts).
+func (h *Handler) exportData(w http.ResponseWriter, r *http.Request) {
+	data, err := h.Search.ExportSession(r.Context(), r.URL.Query().Get("session_id"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.Header().Set("Content-Disposition", "attachment; filename=\"podfind-"+data.SessionID+".json\"")
+	writeJSON(w, http.StatusOK, data)
+}
+
+func (h *Handler) deleteData(w http.ResponseWriter, r *http.Request) {
+	deleted, err := h.Search.DeleteSession(r.Context(), r.URL.Query().Get("session_id"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, deleted)
 }
 
 func (h *Handler) model(w http.ResponseWriter, r *http.Request) {

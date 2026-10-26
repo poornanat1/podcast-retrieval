@@ -3,10 +3,11 @@ info:
   title: PodFind API
   version: "1"
   description: |
-    Text search over podcast episodes (query understanding, hybrid retrieval,
-    learned reranking), episode lookup, and interaction events. Events are
-    attributed server-side from the stored search, so clients send only what
-    they displayed or played. Served by cmd/api.
+    Text and voice search over podcast episodes (speech-to-text, query
+    understanding, hybrid retrieval, learned reranking), episode lookup,
+    interaction events, and data controls. Events are attributed server-side
+    from the stored search, so clients send only what they displayed or
+    played. Served by cmd/api.
 paths:
   /v1/search/text:
     post:
@@ -23,9 +24,48 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/SearchResponse" }
         "400": { $ref: "#/components/responses/Error" }
+  /v1/search/voice:
+    post:
+      summary: Search episodes by voice
+      description: |
+        The recording is transcribed by the speech server and the transcript
+        is searched exactly as typed text would be, query understanding
+        included. The transcript, its language, confidence and recognizer are
+        stored with the search. The recording is discarded once transcribed
+        unless `retain` is true and recording storage is configured; a kept
+        recording is deletable through `DELETE /v1/me/data`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio, session_id]
+              properties:
+                audio: { type: string, format: binary, description: "WAV (PCM 8/16/24/32-bit or 32-bit float, 8–96 kHz, mono or stereo), at most 30 s and 4 MB" }
+                session_id: { type: string, maxLength: 128 }
+                language: { type: string, description: "ISO 639-1 hint for the recognizer; omitted means detect" }
+                filters: { type: string, description: "JSON-encoded Filters" }
+                limit: { type: integer, minimum: 1, maximum: 100, default: 20 }
+                retain: { type: boolean, default: false, description: "Consent to keep the recording" }
+      responses:
+        "200":
+          description: The text search's response plus the transcript and whether the recording was kept
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/SearchResponse" }
+                  - type: object
+                    properties:
+                      transcript: { $ref: "#/components/schemas/Transcript" }
+                      retained: { type: boolean }
+                      retention: { type: string, description: Why a requested retention did not happen }
+        "400": { $ref: "#/components/responses/Error" }
+        "503": { description: The speech server is unavailable, content: { application/json: { schema: { type: object, properties: { error: { type: string } } } } } }
   /v1/search/{queryId}:
     get:
-      summary: A stored search (query, filters, versions, results with scores and sources)
+      summary: A stored search (query, filters, input, versions, results with scores and sources)
       parameters:
         - { name: queryId, in: path, required: true, schema: { type: string } }
       responses:
@@ -90,6 +130,33 @@ paths:
       responses:
         "202": { description: Recorded }
         "400": { $ref: "#/components/responses/Error" }
+  /v1/me/data:
+    get:
+      summary: Export everything stored for a session
+      description: The session's searches (transcripts included), interaction events, and retained recordings' metadata, as a JSON download.
+      parameters:
+        - { name: session_id, in: query, required: true, schema: { type: string, maxLength: 128 } }
+      responses:
+        "200": { description: The session's data }
+        "400": { $ref: "#/components/responses/Error" }
+    delete:
+      summary: Delete everything stored for a session
+      description: Removes the session's searches, interaction events, and retained voice recordings (the objects first, then the rows).
+      parameters:
+        - { name: session_id, in: query, required: true, schema: { type: string, maxLength: 128 } }
+      responses:
+        "200":
+          description: Counts of what was removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id: { type: string }
+                  searches: { type: integer }
+                  events: { type: integer }
+                  recordings: { type: integer }
+        "400": { $ref: "#/components/responses/Error" }
   /v1/model:
     get:
       summary: The model bundle the API serves (versions, index keys, candidate depth)
@@ -118,6 +185,22 @@ components:
         max_duration_seconds: { type: integer }
         published_after: { type: string, format: date }
         no_explicit: { type: boolean }
+    Transcript:
+      type: object
+      properties:
+        text: { type: string }
+        language: { type: string }
+        confidence: { type: number, nullable: true, description: Mean token log-probability; absent for hosted recognizers }
+        backend: { type: string, description: "The recognizer, e.g. whisper:openai/whisper-small" }
+        audio_seconds: { type: number }
+        elapsed_ms: { type: number }
+    Input:
+      type: object
+      description: How the query was entered. Clients may send mode text or voice_edited; mode voice is set by the server.
+      properties:
+        mode: { type: string, enum: [text, voice, voice_edited] }
+        parent_query_id: { type: string, description: For voice_edited, the voice search whose transcript was edited }
+        transcript: { $ref: "#/components/schemas/Transcript" }
     SearchRequest:
       type: object
       required: [query]
@@ -126,6 +209,7 @@ components:
         filters: { $ref: "#/components/schemas/Filters" }
         session_id: { type: string }
         limit: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        input: { $ref: "#/components/schemas/Input" }
     SearchResponse:
       type: object
       properties:
@@ -137,6 +221,7 @@ components:
             text: { type: string, description: Search text after filter phrases are removed }
             filters: { $ref: "#/components/schemas/Filters" }
             parsed: { type: array, items: { type: string } }
+        input: { $ref: "#/components/schemas/Input" }
         results:
           type: array
           items:
