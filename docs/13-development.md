@@ -42,6 +42,9 @@ make ci                                   # lint + tests + build
 | `make serve-models` / `make api` | model server (port 8081) / Go API and web app (port 8080) |
 | `make prewarm` | load the served vector indexes and rows into memory |
 | `make online-eval API=…` | score the running API on the relevance set |
+| `make serve-speech` | speech server (port 8082; `PODFIND_STT`, `PODFIND_STT_DEVICE`) |
+| `make speech-testset` | synthesize the speech test set (macOS `say` for reference voices, Chatterbox in `ml/speech/tts`) |
+| `make speech-eval API=…` | voice-robustness evaluation against the running API |
 | `make cohort-report COMPARE_JSON=…` | per-cohort tables with regressions against the baselines flagged |
 | `make eval EVAL_CONFIG=…` / `eval-all` | evaluate one system / every config in `experiments/eval/` |
 
@@ -84,7 +87,10 @@ go test ./...                    # Go: unit tests; database-backed tests use int
 
 Python tests never hit the network or the database; model tests use a
 tiny randomly initialized BERT and a hand-written vocabulary
-(`ml/tests/helpers.py`). CI (`.github/workflows/ci.yml`) runs `make ci`
+(`ml/tests/helpers.py`), and the speech tests use a fake recognizer and
+synthetic tones. The speech test-set builder needs macOS `say` and the
+Chatterbox environment (`uv sync` in `ml/speech/tts`, its own lock file,
+because it pins an older torch); nothing else does. CI (`.github/workflows/ci.yml`) runs `make ci`
 against a `pgvector/pgvector:pg17` service container.
 
 ## Conventions

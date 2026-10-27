@@ -39,8 +39,13 @@ Built and measured:
   model bundle is gated on training-serving parity checks.
   [14-serving.md](14-serving.md)
 
-Not built yet: voice input, deployment manifests, and monitoring. The ML
-worker entry point is a scaffold.
+- **Voice** — spoken queries through a local speech server, stored
+  transcripts, consent-gated recording retention, session data export and
+  deletion, and a voice-robustness evaluation on a synthetic speech test
+  set. [15-voice.md](15-voice.md)
+
+Not built yet: deployment manifests and monitoring. The ML worker entry
+point is a scaffold.
 
 ## Documents
 
@@ -60,6 +65,7 @@ worker entry point is a scaffold.
 | [12-observability.md](12-observability.md) | What is tracked today |
 | [13-development.md](13-development.md) | Setup, Make targets, tests, conventions |
 | [14-serving.md](14-serving.md) | Model bundle, model server, Go API, events, parity and promotion |
+| [15-voice.md](15-voice.md) | Voice search, the speech server, data controls, the speech test set and its evaluation |
 | [data-card.md](data-card.md) | Data sources, label taxonomy, freeze state, training-data coverage |
 | [model-card.md](model-card.md) | The registered retriever: data, evaluation, cold start, failure modes |
 | [licensing.md](licensing.md) | Rights and responsibilities for podcast content |
@@ -70,10 +76,10 @@ worker entry point is a scaffold.
 cmd/            api, catalog-worker, migrate; ml-worker is a scaffold
 internal/       api, search, catalog, rss, transcript, discovery, particle, jobs, outbox, objstore, migrate, pgtest, version
 migrations/     PostgreSQL schema, applied by `make migrate`
-ml/             datasets, features, models, training, embeddings, hard_negatives, retrieval, ranking, serving, sql, relevance, evaluation, tests
+ml/             datasets, features, models, training, embeddings, hard_negatives, retrieval, ranking, serving, speech, sql, relevance, evaluation, tests
 web/            the web app, embedded into the API
 api/openapi/    the API's OpenAPI description
-experiments/    datasets/, training/, eval/ configs and the reports
+experiments/    datasets/, training/, eval/, ranking/, speech/ configs and the reports
 data/           relevance/ (tracked); snapshots/, datasets/, models/ (local, gitignored)
 deploy/         compose init script; helm/ and openshift/ are placeholders
 ```

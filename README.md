@@ -4,7 +4,7 @@ Podcast search over ~800k episodes: hybrid lexical + vector retrieval, a
 fine-tuned two-tower model, and an evaluation setup honest enough to say
 when the model loses.
 
-Type or (eventually) say what you want — *"English episodes under 45
+Type or say what you want — *"English episodes under 45
 minutes about practical uses of AI, published this year, no explicit
 content"* — and get episodes back, ranked, with the constraints enforced
 as hard filters.
@@ -23,7 +23,8 @@ as hard filters.
 | Learned ranker | LightGBM LambdaRank over the union of lexical, E5, and two-tower candidates; 31 shared feature definitions; query-grouped cross-validation. |
 | Two-tower model | PyTorch, shared E5 encoder, structured episode features, shared training/serving feature contract, resumable training with judged-pool validation, distillation, hard-negative mining and auditing, acceptance gates with MLflow registration. |
 | Serving | Go API with query understanding, concurrent three-leg retrieval, reranking through an ONNX model server, stored searches, attributed impression and playback events, and a minimal web app. A model bundle is promoted only after training-serving parity checks pass. |
-| Voice, deployment, monitoring | Not built. |
+| Voice | Recording in the web app, local Whisper transcription through a speech server, an editable transcript, consent-gated retention, and session export and deletion. A synthetic speech test set and a voice-robustness report quantify what transcription costs retrieval. |
+| Deployment, monitoring | Not built. |
 
 ## Results so far
 
@@ -63,7 +64,7 @@ in the [model card](docs/model-card.md). Write-ups:
 cmd/            Go entry points: api, catalog-worker, migrate (ml-worker is a scaffold)
 internal/       Go packages: api, search, catalog, rss, transcript, discovery, jobs, outbox, objstore
 migrations/     PostgreSQL schema
-ml/             Python: datasets, features, models, training, embeddings, retrieval, ranking, serving, relevance, evaluation
+ml/             Python: datasets, features, models, training, embeddings, retrieval, ranking, serving, speech, relevance, evaluation
 web/            Web app served by the API
 experiments/    Checked-in dataset, training, and eval configs, and reports
 data/           Relevance set (tracked); snapshots, datasets, models (local)
@@ -92,6 +93,7 @@ make bundle                                    # ONNX serving bundle, printed as
 export BUNDLE=data/serving/bundles/<id>
 make golden && make prewarm
 make serve-models &                            # model server on :8081
+make serve-speech &                            # speech server on :8082 (voice search; optional)
 PODFIND_DEBUG=1 PODFIND_LEXICAL_TIMEOUT_MS=60000 PODFIND_VECTOR_TIMEOUT_MS=60000 make api &
 make parity API=http://localhost:8080 && make promote   # parity gates promotion; restart the API without debug after
 ```

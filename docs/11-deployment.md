@@ -12,9 +12,12 @@ through Docker Compose:
 
 The Python jobs (embedding, training, evaluation) run on the host with
 `uv`, against the compose services. The serving processes also run on the
-host: the model server (`make serve-models`, port 8081) and the Go API
-(`make api`, port 8080). Their configuration, start order, and memory
-needs are in [14-serving.md](14-serving.md#operations).
+host: the model server (`make serve-models`, port 8081), the speech
+server (`make serve-speech`, port 8082), and the Go API (`make api`,
+port 8080). Their configuration, start order, and memory needs are in
+[14-serving.md](14-serving.md#operations) and [15-voice.md](15-voice.md).
+Voice recordings a user asks to keep go to MinIO when the API has the
+`OBJECT_STORE_*` variables; without them retention is refused.
 
 `deploy/helm/` and `deploy/openshift/` are empty placeholders, and
 `cmd/ml-worker` prints its version and exits. Kubernetes manifests, probes,

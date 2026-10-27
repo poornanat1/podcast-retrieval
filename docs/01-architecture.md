@@ -15,6 +15,11 @@ flowchart TB
     EVAL --> MLF["MLflow"]
     TRAIN --> MLF
     SNAP --> MINIO[("MinIO<br/>published datasets · raw transcripts")]
+    WEB["Web app"] -->|"text / voice"| API["Go API (cmd/api)"]
+    API --> STT["Speech server (ml/speech)<br/>Whisper"]
+    API --> MS["Model server (ml/serving)<br/>ONNX"]
+    API --> PG
+    API -->|"kept recordings"| MINIO
 ```
 
 ## Components
@@ -70,8 +75,15 @@ immutable model bundle), stores every search, and records attributed
 interaction events. It also serves the web app (`web/`). Details in
 [14-serving.md](14-serving.md).
 
+**Voice (Go API + `ml/speech`).** A spoken query is a WAV recording the
+API sends to the speech server (Whisper, locally), then searches as text.
+The transcript is stored with the search, the recording is not kept
+unless the user asks, and a session can export or delete all its data.
+A synthetic speech test set measures what transcription costs retrieval.
+[15-voice.md](15-voice.md)
+
 Not built: the ML worker (`cmd/ml-worker` prints its version and exits),
-voice input, deployment manifests, and monitoring.
+deployment manifests, and monitoring.
 
 ## Data flows
 

@@ -10,11 +10,13 @@ PostgreSQL 17 with `pgvector` is the single store. Schema lives in
 | `0002_catalog.sql` | `podcasts`, `episodes`, `transcripts` |
 | `0003_jobs.sql` | job queue |
 | `0004_outbox.sql` | transactional outbox |
-| `0005_interaction_events.sql` | interaction events (schema only; nothing writes to it yet) |
+| `0005_interaction_events.sql` | interaction events: impressions, playback, searches, with attribution |
 | `0007_transcript_language.sql` | transcript language for text-search configs |
 | `0008_full_text_search.sql` | generated `tsvector` columns and GIN indexes |
 | `0009_podcast_popularity.sql` | provider-reported popularity on podcasts |
 | `0010_episode_embeddings.sql` | `episode_embeddings` |
+| `0011_searches.sql` | `searches`: every served search with what produced it |
+| `0012_voice_search.sql` | `searches.input` (typed, spoken, or an edited transcript) and `voice_recordings` |
 
 ## Catalog tables
 
@@ -53,9 +55,15 @@ by the embedding job. Details in [05-embeddings.md](05-embeddings.md).
 
 `jobs` holds typed JSON payloads with attempts, lease, backoff, and
 dead-letter state; `outbox` holds versioned domain events with processing
-attempts; `interaction_events` is the schema for impressions and playback
-events (rank, sources, scores, model and index versions) that the serving
-path will write once it exists.
+attempts. The serving path writes `searches` (the understood query,
+filters, how it was entered, the model bundle, feature and index versions,
+per-leg outcomes, timings, and the ranked results with scores and
+candidate sources) and `interaction_events` (search, impression and
+playback events attributed from the stored search). `voice_recordings`
+lists the recordings users asked to keep, with the object key and the
+time of consent; everything keyed by `session_id` is what the data
+controls export and delete. [14-serving.md](14-serving.md),
+[15-voice.md](15-voice.md)
 
 ## Local access
 
