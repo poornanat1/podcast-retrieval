@@ -118,10 +118,12 @@ class OpenAITranscriber:
                           backend=self.name)
 
 
-def load(name: str = DEFAULT_BACKEND) -> Transcriber:
+def load(name: str = DEFAULT_BACKEND, device: str | None = None) -> Transcriber:
+    """``device`` applies to local backends: cpu, mps or cuda; None picks
+    the Apple GPU when present, else the CPU."""
     kind, _, model = name.partition(":")
     if kind == "whisper":
-        return WhisperTranscriber(model or "openai/whisper-small")
+        return WhisperTranscriber(model or "openai/whisper-small", device)
     if kind == "openai":
         return OpenAITranscriber(model or "gpt-4o-mini-transcribe")
     raise ValueError(f"unknown speech backend {name!r}; use whisper:<model> or openai:<model>")

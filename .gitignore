@@ -35,4 +35,4 @@ data/serving/
 data/speech/*/clips/
 data/speech/*/references/
 data/speech/*/jobs.jsonl
-data/speech/*/clips.jsonl
+data/speech/*/clips*.jsonl

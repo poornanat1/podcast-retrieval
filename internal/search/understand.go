@@ -54,9 +54,20 @@ var (
 	reRelative        = regexp.MustCompile(`(?i)\b(?:published\s+)?(?:(?:in|from|over|during)\s+the\s+)?(?:past|last)\s+(week|month|year)\b`)
 	reSinceYear       = regexp.MustCompile(`(?i)\b(?:published\s+)?(?:since|after|from)\s+((?:19|20)\d{2})\b`)
 	reNoExplicit      = regexp.MustCompile(`(?i)\b(?:no|not|non)[\s-]+explicit(?:\s+(?:content|language|episodes?))?\b|\bfamily[\s-]+friendly\b|\bkid[s]?[\s-]+friendly\b|\bclean\s+(?:(?:episodes?|content|version)\s+)?only\b|\bclean\s+(?:episodes?|content|version)\b`)
-	reLeadIn          = regexp.MustCompile(`(?i)^(?:(?:episodes?|podcasts?|shows?)\s+(?:about|on|for)\s+|about\s+)`)
-	reDangling        = regexp.MustCompile(`(?i)(?:^|[\s,;]+)(?:published|and|with|that are|which are)(?:[\s,;]+|$)`)
-	reSpaces          = regexp.MustCompile(`[\s,;]+`)
+	// Spoken requests open with a command and often close with "please":
+	// "search for X", "find me some podcast episodes about X", "play me an
+	// episode about X". Only phrasings that cannot start a topic are
+	// stripped: "find" and "play" alone are not ("play therapy").
+	reCommand = regexp.MustCompile(`(?i)^(?:(?:please|hey|ok|okay)[\s,]+)?(?:(?:can|could|would)\s+you\s+)?(?:search\s+for|find\s+me|show\s+me|play\s+me|look\s+up|look\s+for|i(?:'m| am)\s+looking\s+for|i\s+want\s+to\s+(?:listen\s+to|hear|find)|are\s+there\s+any|is\s+there\s+a)\s+`)
+	reLeadIn  = regexp.MustCompile(`(?i)^(?:(?:some|any|a|an|the)\s+)?(?:(?:podcast|good|new)\s+)?(?:(?:episodes?|podcasts?|shows?|something)\s+(?:about|on|for|that\s+(?:talks?|is|are)\s+about)\s+|about\s+)`)
+	// "find episodes about X", "play some podcasts on X": the command goes,
+	// the object stays for reLeadIn.
+	reCommandObject = regexp.MustCompile(`(?i)^(?:find|play|get|give\s+me)\s+((?:some|any|a|an|the|podcast|podcasts?|episodes?|shows?|something)\s+)`)
+	reTrailing      = regexp.MustCompile(`(?i)[\s,]*(?:please|thanks|thank\s+you)?[\s.?!,]*$`)
+	// Connectors left at an edge, or doubled, where a filter phrase was
+	// removed. Never in the middle of a topic ("the rise and fall").
+	reDangling = regexp.MustCompile(`(?i)^[\s,;]*(?:published|and|with|that are|which are)(?:[\s,;]+|$)|[\s,;]+(?:published|and|with|that are|which are)[\s,;]*$|[\s,;]+(?:and|with)[\s,;]+(?:and|with)[\s,;]+`)
+	reSpaces   = regexp.MustCompile(`[\s,;]+`)
 )
 
 // Understand extracts structured filters from free text and returns the
@@ -68,6 +79,7 @@ var (
 func Understand(raw string, explicit Filters, now time.Time) Understood {
 	u := Understood{Raw: raw, Filters: explicit}
 	text := " " + raw + " "
+	text = reTrailing.ReplaceAllString(text, " ") + " "
 	remove := func(re *regexp.Regexp) []string {
 		m := re.FindStringSubmatch(text)
 		if m == nil {
@@ -130,6 +142,8 @@ func Understand(raw string, explicit Filters, now time.Time) Understood {
 	text = reSpaces.ReplaceAllString(text, " ")
 	for {
 		cleaned := strings.TrimSpace(reDangling.ReplaceAllString(" "+text+" ", " "))
+		cleaned = reCommand.ReplaceAllString(cleaned, "")
+		cleaned = reCommandObject.ReplaceAllString(cleaned, "$1")
 		cleaned = reLeadIn.ReplaceAllString(cleaned, "")
 		if cleaned == strings.TrimSpace(text) {
 			break

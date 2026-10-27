@@ -75,6 +75,7 @@
     "exaggeration": 0.5,
     "cfg_weight": 0.5
   },
+  "carrier": "Search for {}.",
   "text_language": {
     "q544ef574": "fr",
     "q7149ba9d": "de",

@@ -77,3 +77,32 @@ func TestOnlyFiltersKeepsEmptyText(t *testing.T) {
 		t.Fatalf("got %+v", u)
 	}
 }
+
+func TestUnderstandStripsSpokenCommands(t *testing.T) {
+	cases := map[string]string{
+		"Search for Joe Rogan.":     "Joe Rogan",
+		"search for the daily wire": "the daily wire",
+		"could you find me some podcast episodes about the psychology of conspiracy theories": "the psychology of conspiracy theories",
+		"I'm looking for a podcast on mountaineering disasters on everest":                    "mountaineering disasters on everest",
+		"find episodes about the rise and fall of blockbuster please":                         "the rise and fall of blockbuster",
+		"are there any podcasts that talk about practical uses of artificial intelligence":    "practical uses of artificial intelligence",
+		"I want to listen to something about clean comedy without swearing":                   "clean comedy without swearing",
+		"play me an episode about history hit":                                                "history hit",
+		"Hey, show me deep dive interviews about climate published this year":                 "deep dive interviews about climate",
+		// Commands that can start a topic are left alone.
+		"play therapy for children":     "play therapy for children",
+		"find my phone":                 "find my phone",
+		"search engine optimization":    "search engine optimization",
+		"searching for sugar man":       "searching for sugar man",
+		"looking for alaska discussion": "looking for alaska discussion",
+	}
+	for raw, want := range cases {
+		if u := Understand(raw, Filters{}, now); u.Text != want {
+			t.Errorf("%q: text %q, want %q (parsed %v)", raw, u.Text, want, u.Parsed)
+		}
+	}
+	u := Understand("Hey, show me deep dive interviews about climate published this year", Filters{}, now)
+	if u.Filters.PublishedAfter != "2026-01-01" {
+		t.Fatalf("filters %+v", u.Filters)
+	}
+}

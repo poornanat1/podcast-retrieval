@@ -112,6 +112,7 @@ def test_build_manifest_with_fake_synthesizer(tmp_path) -> None:
         "reference_text": {"en": "hello", "es": "hola"}, "base_voice": "en_us",
         "text_language": {"q11": "es"},
         "accents": ["en_gb"], "synthesis": {"exaggeration": 0.5, "cfg_weight": 0.5},
+        "carrier": "Search for {}.",
         "subset_per_type": {"exploratory": 2, "entity": 1},
         "conversational_per_type": {"filtered": 1},
         "conditions": ["noise_10db", "babble_10db", "telephone"], "speeds": {"fast": 1.3},
@@ -141,6 +142,7 @@ def test_build_manifest_with_fake_synthesizer(tmp_path) -> None:
     assert conv["filters"] == {"published_after": "2026-01-01"}
     entity = next(r for r in rows if r["query_id"] == "q1" and r["tier"] == "base")
     assert entity["entities"] == ["topic 1"]
+    assert entity["text"] == "Search for topic 1." and entity["terse_text"] == "topic 1"
     fast = next(r for r in rows if r["tier"] == "speed")
     assert fast["speed"] == 1.3 and fast["condition"] == "clean"
     assert fast["seconds"] == pytest.approx(1.0 / 1.3, rel=0.05)

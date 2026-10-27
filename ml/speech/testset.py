@@ -14,8 +14,13 @@ exactly one way.
 
 Tiers (counts for the v1 config):
 
-- **base**: every relevance query, terse (the query text as written), in
-  the base voice: 180 clips.
+- **base**: every relevance query, terse, in the base voice: 180 clips.
+  Terse clips are spoken inside a carrier phrase ("Search for joe rogan."):
+  on bare two-word texts Chatterbox hallucinated or truncated in about
+  four of ten seeds, with the carrier it did not in forty tries. Query
+  understanding strips the carrier, as it would for a real spoken
+  request, and the evaluation measures the typed carrier text as the
+  reference, so the carrier's own cost is reported separately.
 - **accent**: a stratified subset of English queries in five other
   English voices: 300 clips.
 - **conversational**: a subset of exploratory and filtered queries phrased
@@ -137,9 +142,10 @@ def build(config: dict, synthesize: bool = True,
                 "entities": entities[q["query_id"]],
                 "filters": {k: q[k] for k in FILTER_KEYS if q.get(k)}}
 
-    rows = [clip(q, "base", "terse", q["query_text"],
+    carrier = config.get("carrier", "{}")
+    rows = [clip(q, "base", "terse", carrier.format(q["query_text"]),
                  by_language[query_language(q, text_language)]) for q in queries]
-    rows += [clip(q, "accent", "terse", q["query_text"], accent)
+    rows += [clip(q, "accent", "terse", carrier.format(q["query_text"]), accent)
              for q in subset for accent in config["accents"]]
     for q in conversational:
         template = CONVERSATIONAL[int(rng.integers(len(CONVERSATIONAL)))]

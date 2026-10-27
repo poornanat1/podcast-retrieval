@@ -1,6 +1,6 @@
 """PodFind speech server: transcription for voice search.
 
-    uv run python -m ml.speech.server [--backend whisper:openai/whisper-small] [--port 8082]
+    uv run python -m ml.speech.server [--backend whisper:<model>] [--device cpu] [--port 8082]
 
 Separate from the model server on purpose: that one runs ONNX only and
 must stay small, while the recognizer is a PyTorch model. The Go API posts
@@ -67,11 +67,13 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backend", default=os.environ.get("PODFIND_STT", stt.DEFAULT_BACKEND))
+    parser.add_argument("--device", default=os.environ.get("PODFIND_STT_DEVICE") or None,
+                        help="cpu, mps or cuda for local backends (default: GPU if present)")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8082")))
     args = parser.parse_args(argv)
-    backend = stt.load(args.backend)
-    print(f"speech server: {backend.name}", flush=True)
+    backend = stt.load(args.backend, args.device)
+    print(f"speech server: {backend.name} on {getattr(backend, 'device', 'remote')}", flush=True)
     uvicorn.run(create_app(backend), host=args.host, port=args.port, log_level="warning")
     return 0
 
