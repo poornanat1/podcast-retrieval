@@ -18,6 +18,7 @@ dependencies = [
     "onnxmltools>=1.16.0",
     "onnxconverter-common>=1.16.0",
     "boto3>=1.43.121",
+    "prometheus-client>=0.21,<1",
 ]
 
 [dependency-groups]
@@ -25,6 +26,44 @@ dev = [
     "pytest>=8,<9",
     "ruff>=0.9,<1",
 ]
+# What the model server image installs: ONNX Runtime inference and the
+# feature code, no training stack.
+serving = [
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.30,<1",
+    "onnxruntime>=1.31.0",
+    "numpy>=2,<3",
+    "tokenizers>=0.20,<1",
+    "pandas>=2.2,<3",
+    "pandera>=0.22,<1",
+    "psycopg[binary]>=3.2,<4",
+    "boto3>=1.43.121",
+    "prometheus-client>=0.21,<1",
+]
+# What the speech server image installs: Whisper on CPU through
+# transformers, or the OpenAI backend.
+speech = [
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.30,<1",
+    "numpy>=2,<3",
+    "scipy>=1.14,<2",
+    "torch>=2.6,<3",
+    "transformers>=4.45,<6",
+    "openai>=1.60,<3",
+    "boto3>=1.43.121",
+    "prometheus-client>=0.21,<1",
+]
+
+# Linux installs get CPU-only torch wheels: the containers and CI have no
+# GPU, and the CUDA wheels add several gigabytes. macOS keeps the default
+# wheels (MPS).
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 
 [build-system]
 requires = ["setuptools>=75"]

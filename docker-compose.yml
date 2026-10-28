@@ -77,7 +77,7 @@ services:
     build:
       context: .
       args:
-        CMD: catalog-worker
+        PODFIND_CMD: catalog-worker
     environment:
       DATABASE_URL: postgres://podfind:podfind@postgres:5432/podfind?sslmode=disable
       # Set in .env (gitignored); discovery jobs dead-letter without it.

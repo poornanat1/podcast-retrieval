@@ -1,0 +1,175 @@
+// PodFind on Railway: one service per process, all built from this
+// repository's Dockerfiles, plus Postgres with pgvector on a volume and two
+// buckets. Apply with the Railway CLI from the repository root:
+//
+//   railway link                 # once: pick the project and environment
+//   railway config plan          # preview
+//   railway config apply         # create or update
+//
+// Secrets are shared variables set once in the dashboard (Project
+// settings > Shared variables): POSTGRES_PASSWORD, GRAFANA_ADMIN_PASSWORD,
+// ALERT_WEBHOOK_URL (Slack-compatible), and optionally OPENAI_API_KEY.
+// Each service names its Dockerfile; the build context is the repository
+// root. Loading the catalog needs a TCP proxy on postgres for the duration
+// of the copy; add it in the dashboard and remove it after
+// (docs/11-deployment.md).
+import {
+  bucket,
+  defineRailway,
+  github,
+  group,
+  image,
+  project,
+  ref,
+  service,
+  volume,
+} from "railway/iac";
+
+const REPO = "poornanat1/podcast-retrieval";
+const BUNDLE_ID = "42df3779d7cf"; // the promoted serving bundle (data/serving/ACTIVE)
+
+export default defineRailway((ctx) => {
+  const source = github(REPO, { branch: "main" });
+  const dockerfile = (path: string) => ({ builder: "DOCKERFILE" as const, dockerfilePath: path });
+  // A bucket's credentials, in the OBJECT_STORE_* variables the services read.
+  const store = (b: ReturnType<typeof bucket>, bucketVar: string) => ({
+    OBJECT_STORE_ENDPOINT: ref(b, "ENDPOINT"),
+    OBJECT_STORE_REGION: ref(b, "REGION"),
+    OBJECT_STORE_ACCESS_KEY: ref(b, "ACCESS_KEY_ID"),
+    OBJECT_STORE_SECRET_KEY: ref(b, "SECRET_ACCESS_KEY"),
+    [bucketVar]: ref(b, "BUCKET"),
+  });
+
+  // --- storage ------------------------------------------------------------
+
+  const models = bucket("models", { region: "iad" }); // serving bundles
+  const recordings = bucket("recordings", { region: "iad" }); // consented voice recordings
+
+  const pgData = volume("postgres-data", { sizeMB: 61440 }); // served catalog ≈ 20 GB + headroom
+
+  // pgvector on our own image: the served hot set (two HNSW indexes and
+  // their rows) is about 6 GB, so the buffer cache must hold it.
+  const postgres = service("postgres", {
+    source: image("pgvector/pgvector:pg17"),
+    start:
+      "postgres -c shared_buffers=6GB -c effective_cache_size=16GB -c work_mem=16MB " +
+      "-c maintenance_work_mem=2GB -c max_connections=100 -c max_parallel_workers_per_gather=2",
+    env: {
+      POSTGRES_USER: "podfind",
+      POSTGRES_DB: "podfind",
+      POSTGRES_PASSWORD: ctx.shared.POSTGRES_PASSWORD,
+      PGDATA: "/var/lib/postgresql/data/pgdata",
+    },
+    volumeMounts: { "/var/lib/postgresql/data": pgData },
+  });
+
+  const databaseUrl =
+    "postgres://podfind:${{shared.POSTGRES_PASSWORD}}@${{postgres.RAILWAY_PRIVATE_DOMAIN}}:5432/podfind?sslmode=disable";
+
+  // --- inference ------------------------------------------------------------
+
+  const bundleCache = volume("bundle-cache", { sizeMB: 5120 });
+  const modelServer = service("models", {
+    source,
+    build: dockerfile("ml/serving/Dockerfile"),
+    healthcheck: "/healthz",
+    healthcheckTimeout: 300, // first start downloads the bundle (≈ 1 GB)
+    env: {
+      PORT: "8081",
+      PODFIND_BUNDLE_ID: BUNDLE_ID,
+      PODFIND_BUNDLE_DIR: "/data/bundles",
+      ...store(models, "OBJECT_STORE_BUCKET_MODELS"),
+    },
+    volumeMounts: { "/data": bundleCache },
+  });
+
+  const speechCache = volume("speech-models", { sizeMB: 5120 });
+  const speechServer = service("speech", {
+    source,
+    build: dockerfile("ml/speech/Dockerfile"),
+    healthcheck: "/healthz",
+    healthcheckTimeout: 600, // first start downloads Whisper small (≈ 1 GB)
+    env: {
+      PORT: "8082",
+      PODFIND_STT: "whisper:openai/whisper-small", // or openai:gpt-4o-mini-transcribe
+      PODFIND_STT_DEVICE: "cpu",
+      HF_HOME: "/data/hf",
+      OMP_NUM_THREADS: "4",
+      OPENAI_API_KEY: ctx.shared.OPENAI_API_KEY,
+    },
+    volumeMounts: { "/data": speechCache },
+  });
+
+  // --- the public API and web app ------------------------------------------
+
+  const api = service("api", {
+    source,
+    build: dockerfile("Dockerfile"),
+    healthcheck: "/healthz",
+    healthcheckTimeout: 120,
+    replicas: ctx.environment === "production" ? 2 : 1,
+    env: {
+      PODFIND_CMD: "api",
+      PORT: "8080",
+      DATABASE_URL: databaseUrl,
+      MODEL_SERVER_URL: "http://${{models.RAILWAY_PRIVATE_DOMAIN}}:8081",
+      SPEECH_SERVER_URL: "http://${{speech.RAILWAY_PRIVATE_DOMAIN}}:8082",
+      PODFIND_LEXICAL_TIMEOUT_MS: "300",
+      PODFIND_VECTOR_TIMEOUT_MS: "1500",
+      PODFIND_LOG_FORMAT: "json",
+      ...store(recordings, "OBJECT_STORE_BUCKET"),
+    },
+  });
+
+  // --- monitoring -----------------------------------------------------------
+
+  const promData = volume("prometheus-data", { sizeMB: 5120 });
+  const prometheus = service("prometheus", {
+    source,
+    build: dockerfile("deploy/monitoring/prometheus/Dockerfile"),
+    healthcheck: "/-/ready",
+    env: {
+      PORT: "9090",
+    },
+    volumeMounts: { "/prometheus": promData },
+  });
+
+  const grafanaData = volume("grafana-data", { sizeMB: 1024 });
+  const grafana = service("grafana", {
+    source,
+    build: dockerfile("deploy/monitoring/grafana/Dockerfile"),
+    healthcheck: "/api/health",
+    env: {
+      PORT: "3000",
+      GF_SERVER_HTTP_PORT: "3000",
+      GF_SECURITY_ADMIN_USER: "admin",
+      GF_SECURITY_ADMIN_PASSWORD: ctx.shared.GRAFANA_ADMIN_PASSWORD,
+      PROMETHEUS_URL: "http://${{prometheus.RAILWAY_PRIVATE_DOMAIN}}:9090",
+      ALERT_WEBHOOK_URL: ctx.shared.ALERT_WEBHOOK_URL,
+    },
+    volumeMounts: { "/var/lib/grafana": grafanaData },
+  });
+
+  // The drift check: the model-server image with a different command, run
+  // every 30 minutes. It exits 2 and posts to the webhook when the served
+  // distributions drift from the checked-in baseline.
+  const drift = service("drift", {
+    source,
+    build: dockerfile("ml/serving/Dockerfile"),
+    start: "python -m ml.monitoring.drift --hours 6",
+    deploy: { cronSchedule: "*/30 * * * *", restartPolicyType: "NEVER" },
+    env: {
+      DATABASE_URL: databaseUrl,
+      PROMETHEUS_URL: "http://${{prometheus.RAILWAY_PRIVATE_DOMAIN}}:9090",
+      ALERT_WEBHOOK_URL: ctx.shared.ALERT_WEBHOOK_URL,
+    },
+  });
+
+  return project("podfind", {
+    resources: [
+      group("Data", [postgres, pgData, models, recordings]),
+      group("Serving", [api, modelServer, speechServer, bundleCache, speechCache]),
+      group("Monitoring", [prometheus, grafana, drift, promData, grafanaData]),
+    ],
+  });
+});

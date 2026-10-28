@@ -2,7 +2,7 @@ GO ?= go
 UV ?= uv
 DATABASE_URL ?= postgres://podfind:podfind@localhost:5432/podfind?sslmode=disable
 
-.PHONY: all build test lint ci python-env migrate snapshot dataset relevance-queries relevance-pool relevance-review relevance-export embed embed-transcripts train-ranker llm-queries name-queries mine-negatives pool-export audit-negatives test-split gates significance cohort-report eval eval-all train index bundle golden parity promote serve-models prewarm api online-eval serve-speech speech-testset speech-eval reproduce
+.PHONY: all build test lint ci python-env migrate images publish-bundle drift drift-baseline loadtest monitoring snapshot dataset relevance-queries relevance-pool relevance-review relevance-export embed embed-transcripts train-ranker llm-queries name-queries mine-negatives pool-export audit-negatives test-split gates significance cohort-report eval eval-all train index bundle golden parity promote serve-models prewarm api online-eval serve-speech speech-testset speech-eval reproduce
 
 all: build
 
@@ -171,3 +171,35 @@ api:
 
 online-eval:
 	$(UV) run python -m ml.serving.online_eval --api $(API)
+
+# --- deployment and operations ------------------------------------------------
+
+# The three service images, as Railway builds them (docs/11-deployment.md).
+images:
+	docker build -f Dockerfile --build-arg PODFIND_CMD=api -t podfind-api .
+	docker build -f ml/serving/Dockerfile -t podfind-model-server .
+	docker build -f ml/speech/Dockerfile -t podfind-speech-server .
+
+# Upload the promoted bundle to the object store (bucket OBJECT_STORE_BUCKET_MODELS).
+publish-bundle:
+	$(UV) run python -m ml.serving.bundlestore publish --bundle $(BUNDLE)
+
+DRIFT_HOURS ?= 6
+PROMETHEUS ?= http://localhost:9090
+
+drift:
+	$(UV) run python -m ml.monitoring.drift --database-url "$(DATABASE_URL)" --hours $(DRIFT_HOURS) --prometheus $(PROMETHEUS)
+
+drift-baseline:
+	$(UV) run python -m ml.monitoring.drift --database-url "$(DATABASE_URL)" --hours $(DRIFT_HOURS) --prometheus $(PROMETHEUS) --write-baseline
+
+LOAD_CONCURRENCY ?= 8
+LOAD_DURATION ?= 2m
+LOAD_OUT ?= experiments/load/latest.json
+
+loadtest:
+	DATABASE_URL="$(DATABASE_URL)" $(GO) run ./cmd/loadtest -api $(API) -concurrency $(LOAD_CONCURRENCY) -duration $(LOAD_DURATION) -out $(LOAD_OUT)
+
+# Prometheus and Grafana against the local servers (http://localhost:3000, admin/podfind).
+monitoring:
+	docker compose -f deploy/monitoring/docker-compose.yml up -d --build

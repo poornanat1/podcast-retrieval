@@ -8,11 +8,12 @@
 //	                             voice search is unavailable while it is down
 //	OBJECT_STORE_*               object storage for voice recordings a user asked
 //	                             to keep; unset refuses retention
-//	PODFIND_API_ADDR             listen address (default :8080)
+//	PODFIND_API_ADDR             listen address (default :$PORT, or :8080)
 //	PODFIND_LEXICAL_TIMEOUT_MS   lexical leg time limit (default 300)
 //	PODFIND_VECTOR_TIMEOUT_MS    vector leg time limit (default 1500)
 //	PODFIND_DEBUG                1 enables debug search responses and fixed
 //	                             reference times (parity checks only)
+
 //
 // The model bundle is whatever the model server serves; the API reads its
 // manifest at startup for the index keys and candidate depth, and health
@@ -114,7 +115,7 @@ func main() {
 		},
 	}
 	srv := &http.Server{
-		Addr:              env("PODFIND_API_ADDR", ":8080"),
+		Addr:              env("PODFIND_API_ADDR", ":"+env("PORT", "8080")),
 		Handler:           api.New(svc, web.Static()),
 		ReadHeaderTimeout: 5 * time.Second,
 		WriteTimeout:      30 * time.Second,

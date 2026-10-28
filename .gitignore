@@ -36,3 +36,7 @@ data/speech/*/clips/
 data/speech/*/references/
 data/speech/*/jobs.jsonl
 data/speech/*/clips*.jsonl
+
+# Railway IaC SDK
+.railway/node_modules/
+.railway/package-lock.json

@@ -1,0 +1,9 @@
+{
+  "name": "podfind-railway",
+  "private": true,
+  "type": "module",
+  "description": "Dependency for authoring .railway/railway.ts; run `npm install` here before `railway config plan`.",
+  "dependencies": {
+    "railway": "^3.12.0"
+  }
+}

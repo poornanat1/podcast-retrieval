@@ -1,12 +1,17 @@
 .git
 .github
-.venv
-__pycache__
+**/.venv
+.railway
+**/__pycache__
 .pytest_cache
 .ruff_cache
 internal-docs
-web
 mlruns
 mlartifacts
-uv.lock
+# Local data: snapshots, datasets, models, speech clips. Bundles reach the
+# model server through the object store, not the image.
+data
+experiments
+dashboards
+.env
 *.md
