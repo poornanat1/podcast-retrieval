@@ -1,0 +1,24 @@
+# Local monitoring: Prometheus scraping the host's API, model server and
+# speech server, and Grafana with the PodFind dashboard and alert rules.
+#   docker compose -f deploy/monitoring/docker-compose.yml up -d
+# Grafana: http://localhost:3000 (admin / podfind).
+services:
+  prometheus:
+    build:
+      context: ../..
+      dockerfile: deploy/monitoring/prometheus/Dockerfile
+    command: ["--config.file=/etc/prometheus/prometheus.local.yml", "--storage.tsdb.path=/prometheus", "--web.listen-address=[::]:9090"]
+    volumes:
+      - ./prometheus/prometheus.local.yml:/etc/prometheus/prometheus.local.yml:ro
+    ports:
+      - "9090:9090"
+  grafana:
+    build:
+      context: ../..
+      dockerfile: deploy/monitoring/grafana/Dockerfile
+    environment:
+      PROMETHEUS_URL: http://prometheus:9090
+      GF_SECURITY_ADMIN_PASSWORD: podfind
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-http://127.0.0.1:9/unconfigured}
+    ports:
+      - "3000:3000"

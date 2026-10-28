@@ -1,0 +1,152 @@
+# Alert rules evaluated by Grafana against Prometheus. Each fires to the
+# webhook contact point. Thresholds are documented in docs/16-monitoring.md.
+apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: podfind-webhook
+    receivers:
+      - uid: podfind-webhook
+        type: slack
+        settings:
+          url: ${ALERT_WEBHOOK_URL}
+          title: "PodFind {{ .CommonLabels.alertname }}"
+          text: "{{ range .Alerts }}{{ .Annotations.summary }}\n{{ end }}"
+policies:
+  - orgId: 1
+    receiver: podfind-webhook
+    group_by: [alertname]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+groups:
+  - orgId: 1
+    name: podfind
+    folder: PodFind
+    interval: 1m
+    rules:
+      - uid: zero-results
+        title: Zero-result rate
+        condition: C
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "More than 20% of searches returned nothing over the last 30 minutes." }
+        data:
+          - refId: A
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, instant: true, expr: "sum(increase(podfind_search_zero_results_total[30m])) / clamp_min(sum(increase(podfind_searches_total[30m])), 1)" }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: gt, params: [0.2] } }] }
+      - uid: vector-leg-failures
+        title: Vector leg failures
+        condition: C
+        for: 5m
+        labels: { severity: critical }
+        annotations: { summary: "A vector retrieval leg (e5 or two_tower) failed or timed out on more than 10% of searches." }
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, instant: true, expr: "max by (leg) (sum by (leg) (increase(podfind_search_legs_total{leg=~\"e5|two_tower\",status!=\"ok\"}[15m])) / clamp_min(sum by (leg) (increase(podfind_search_legs_total{leg=~\"e5|two_tower\"}[15m])), 1))" }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: gt, params: [0.1] } }] }
+      - uid: rerank-fallback
+        title: Reranker fallback to RRF
+        condition: C
+        for: 5m
+        labels: { severity: critical }
+        annotations: { summary: "More than 5% of searches were ordered by RRF because reranking failed." }
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, instant: true, expr: "sum(increase(podfind_searches_total{ordering=\"rrf\"}[15m])) / clamp_min(sum(increase(podfind_searches_total[15m])), 1)" }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: gt, params: [0.05] } }] }
+      - uid: search-latency
+        title: Search p95 latency
+        condition: C
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "Search p95 (excluding transcription) is above 1 s over the last 15 minutes; the budget is 500 ms." }
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, instant: true, expr: "histogram_quantile(0.95, sum by (le) (rate(podfind_search_stage_seconds_bucket{stage=\"total_ms\"}[15m])))" }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: gt, params: [1] } }] }
+      - uid: feature-nan
+        title: Non-finite feature values
+        condition: C
+        for: 1m
+        labels: { severity: critical }
+        annotations: { summary: "The model server saw NaN or infinite feature values: a training-serving skew in the evidence." }
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, instant: true, expr: "sum(increase(podfind_model_feature_nan_total[15m]))" }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: gt, params: [0] } }] }
+      - uid: query-norm
+        title: Query vector norm drift
+        condition: C
+        for: 5m
+        labels: { severity: critical }
+        annotations: { summary: "Query vectors are no longer unit-norm: the served tower or tokenizer differs from the one that built the index." }
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, instant: true, expr: "1 - (sum(increase(podfind_model_query_norm_bucket{le=\"1.001\"}[15m])) - sum(increase(podfind_model_query_norm_bucket{le=\"0.999\"}[15m]))) / clamp_min(sum(increase(podfind_model_query_norm_count[15m])), 1)" }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: gt, params: [0.01] } }] }
+      - uid: index-age
+        title: Vector index age
+        condition: C
+        for: 1h
+        labels: { severity: warning }
+        annotations: { summary: "The newest vector of a served model is older than 45 days; the embedding job has not run against new content." }
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, instant: true, expr: "max(podfind_index_age_seconds)" }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: gt, params: [3888000] } }] }
+      - uid: api-errors
+        title: API server errors
+        condition: C
+        for: 5m
+        labels: { severity: critical }
+        annotations: { summary: "More than 1% of API requests returned 5xx over the last 10 minutes (availability target 99.9%)." }
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, instant: true, expr: "sum(increase(podfind_http_requests_total{status=~\"5..\"}[10m])) / clamp_min(sum(increase(podfind_http_requests_total[10m])), 1)" }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: gt, params: [0.01] } }] }
+      - uid: no-scrape
+        title: Service not reachable
+        condition: C
+        for: 3m
+        labels: { severity: critical }
+        annotations: { summary: "Prometheus cannot scrape a PodFind service (api, models or speech)." }
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, instant: true, expr: "count(up{job=~\"api|models|speech\"} == 0)" }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: gt, params: [0] } }] }
