@@ -32,10 +32,33 @@ import time
 from datetime import datetime
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+import numpy as np
+from fastapi import FastAPI, HTTPException, Response
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, Summary, generate_latest
 from pydantic import BaseModel, Field
 
+from ml.ranking.features import FEATURES
 from ml.serving.runtime import ServingBundle, resolve_bundle
+
+# Prometheus metrics at /metrics: what the drift check and dashboards read.
+# Feature values are summaries (sum and count per feature), enough to
+# watch each feature's mean drift against the training distribution.
+_SECONDS = (.001, .0025, .005, .01, .025, .05, .1, .25, .5, 1, 2.5)
+ENCODE_SECONDS = Histogram("podfind_model_encode_seconds", "Query encoding time.",
+                           buckets=_SECONDS)
+RERANK_SECONDS = Histogram("podfind_model_rerank_seconds", "Reranking time.",
+                           buckets=_SECONDS)
+QUERY_NORM = Histogram("podfind_model_query_norm", "L2 norm of query vectors.",
+                       ["tower"], buckets=(0.5, 0.9, 0.99, 0.999, 1.001, 1.01, 1.1, 2))
+RERANK_CANDIDATES = Histogram("podfind_model_rerank_candidates", "Candidates per rerank call.",
+                              buckets=(0, 10, 50, 100, 200, 400, 800))
+SCORE = Histogram("podfind_model_score", "Ranker scores.",
+                  buckets=[round(-4 + 0.5 * i, 1) for i in range(29)])
+FEATURE = Summary("podfind_model_feature", "Feature values seen at serving.", ["feature"])
+FEATURE_NAN = Counter("podfind_model_feature_nan_total", "Non-finite feature values.",
+                      ["feature"])
+REQUEST_ERRORS = Counter("podfind_model_request_errors_total", "Rejected requests.",
+                         ["endpoint"])
 
 
 class Query(BaseModel):
@@ -60,6 +83,10 @@ class RerankRequest(BaseModel):
 def create_app(bundle: ServingBundle) -> FastAPI:
     app = FastAPI(title="podfind-model-server", version=bundle.bundle_id)
 
+    @app.get("/metrics")
+    def metrics() -> Response:
+        return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
     @app.get("/healthz")
     def healthz() -> dict:
         return {"ok": True, "bundle_id": bundle.bundle_id}
@@ -72,6 +99,9 @@ def create_app(bundle: ServingBundle) -> FastAPI:
     def encode(req: EncodeRequest) -> dict:
         start = time.perf_counter()
         vectors = bundle.encode(req.query.model_dump())
+        ENCODE_SECONDS.observe(time.perf_counter() - start)
+        for tower, vec in vectors.items():
+            QUERY_NORM.labels(tower).observe(float(np.linalg.norm(vec)))
         return {"bundle_id": bundle.bundle_id,
                 "two_tower": vectors["two_tower"].tolist(), "e5": vectors["e5"].tolist(),
                 "elapsed_ms": round((time.perf_counter() - start) * 1000, 3)}
@@ -83,8 +113,11 @@ def create_app(bundle: ServingBundle) -> FastAPI:
             scores, features = bundle.rerank(req.query.model_dump(), req.candidates,
                                              req.reference_time)
         except (KeyError, TypeError, ValueError) as err:
+            REQUEST_ERRORS.labels("rerank").inc()
             raise HTTPException(status_code=422, detail=f"bad candidate evidence: {err}") \
                 from err
+        RERANK_SECONDS.observe(time.perf_counter() - start)
+        observe_rerank(scores, features)
         return {"bundle_id": bundle.bundle_id,
                 "feature_version": bundle.manifest["feature_version"],
                 "scores": scores.tolist(),
@@ -92,6 +125,23 @@ def create_app(bundle: ServingBundle) -> FastAPI:
                 "elapsed_ms": round((time.perf_counter() - start) * 1000, 3)}
 
     return app
+
+
+def observe_rerank(scores: np.ndarray, features: np.ndarray) -> None:
+    RERANK_CANDIDATES.observe(len(scores))
+    for score in scores.tolist():
+        SCORE.observe(score)
+    if not len(features):
+        return
+    finite = np.isfinite(features)
+    for j in range(min(len(FEATURES), features.shape[1])):
+        name = FEATURES[j]
+        column = features[:, j]
+        bad = int((~finite[:, j]).sum())
+        if bad:
+            FEATURE_NAN.labels(name).inc(bad)
+        for value in column[finite[:, j]].tolist():
+            FEATURE.labels(name).observe(value)
 
 
 def main(argv: list[str] | None = None) -> int:

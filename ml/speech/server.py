@@ -23,16 +23,30 @@ import os
 import sys
 import time
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 
 from ml.speech import transcribe as stt
 from ml.speech.audio import decode, to_mono_16k
 
 MAX_BYTES = 8 << 20
 
+TRANSCRIBE_SECONDS = Histogram("podfind_speech_transcribe_seconds", "Transcription time.",
+                               buckets=(.1, .25, .5, 1, 2, 4, 8, 16, 30))
+AUDIO_SECONDS = Histogram("podfind_speech_audio_seconds", "Length of audio transcribed.",
+                          buckets=(1, 2, 3, 5, 8, 12, 20, 30, 60))
+CONFIDENCE = Histogram("podfind_speech_confidence", "Mean token log-probability.",
+                       buckets=[round(-3 + 0.25 * i, 2) for i in range(13)])
+LANGUAGE = Counter("podfind_speech_language_total", "Transcript language.", ["language"])
+ERRORS = Counter("podfind_speech_errors_total", "Rejected or failed requests.", ["kind"])
+
 
 def create_app(backend: stt.Transcriber) -> FastAPI:
     app = FastAPI(title="podfind-speech-server", version=backend.name)
+
+    @app.get("/metrics")
+    def metrics() -> Response:
+        return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     @app.get("/healthz")
     def healthz() -> dict:
@@ -48,12 +62,19 @@ def create_app(backend: stt.Transcriber) -> FastAPI:
         start = time.perf_counter()
         data = await request.body()
         if len(data) > MAX_BYTES:
+            ERRORS.labels("too_large").inc()
             raise HTTPException(status_code=413, detail=f"audio larger than {MAX_BYTES} bytes")
         try:
             samples = to_mono_16k(decode(data))
             result = backend.transcribe(samples, language or None)
         except ValueError as err:
+            ERRORS.labels("bad_audio").inc()
             raise HTTPException(status_code=422, detail=str(err)) from err
+        TRANSCRIBE_SECONDS.observe(time.perf_counter() - start)
+        AUDIO_SECONDS.observe(len(samples) / 16_000)
+        if result.confidence is not None:
+            CONFIDENCE.observe(result.confidence)
+        LANGUAGE.labels(result.language or "unknown").inc()
         return {"text": result.text, "language": result.language,
                 "confidence": result.confidence, "backend": result.backend,
                 "audio_seconds": round(len(samples) / 16_000, 3),

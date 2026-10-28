@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"podfind/internal/metrics"
 	"podfind/internal/search"
 )
 
@@ -40,6 +41,7 @@ func New(svc *search.Service, web fs.FS) *Handler {
 	h.mux.HandleFunc("DELETE /v1/me/data", h.deleteData)
 	h.mux.HandleFunc("GET /v1/model", h.model)
 	h.mux.HandleFunc("GET /healthz", h.health)
+	h.mux.Handle("GET /metrics", metrics.Handler())
 	if web != nil {
 		h.mux.Handle("GET /", http.FileServerFS(web))
 	}
@@ -50,9 +52,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 	h.mux.ServeHTTP(rec, r)
-	if r.URL.Path != "/healthz" {
+	elapsed := time.Since(start)
+	route := r.Pattern
+	if route == "" {
+		route = "unmatched"
+	} else if strings.HasSuffix(route, "/") { // the web app's files
+		route = "static"
+	}
+	metrics.ObserveHTTP(route, r.Method, rec.status, elapsed.Seconds())
+	if r.URL.Path != "/healthz" && r.URL.Path != "/metrics" {
 		slog.Info("http", "method", r.Method, "path", r.URL.Path, "status", rec.status,
-			"ms", float64(time.Since(start).Microseconds())/1000)
+			"ms", float64(elapsed.Microseconds())/1000)
 	}
 }
 
@@ -109,6 +119,7 @@ func (h *Handler) searchText(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	metrics.ObserveSearch(&resp)
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -164,6 +175,7 @@ func (h *Handler) searchVoice(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	metrics.ObserveVoice(&resp)
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -201,6 +213,7 @@ func (h *Handler) impression(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	metrics.Events.WithLabelValues("impression").Add(float64(n))
 	writeJSON(w, http.StatusAccepted, map[string]int{"recorded": n})
 }
 
@@ -214,6 +227,7 @@ func (h *Handler) playback(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	metrics.Events.WithLabelValues("playback_" + r.PathValue("action")).Inc()
 	writeJSON(w, http.StatusAccepted, map[string]int{"recorded": 1})
 }
 

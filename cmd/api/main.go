@@ -13,7 +13,10 @@
 //	PODFIND_VECTOR_TIMEOUT_MS    vector leg time limit (default 1500)
 //	PODFIND_DEBUG                1 enables debug search responses and fixed
 //	                             reference times (parity checks only)
-
+//	PODFIND_LOG_FORMAT           json for one JSON object per line (the default
+//	                             on Railway), text otherwise
+//
+// Prometheus metrics are served at /metrics (internal/metrics).
 //
 // The model bundle is whatever the model server serves; the API reads its
 // manifest at startup for the index keys and candidate depth, and health
@@ -35,6 +38,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"podfind/internal/api"
+	"podfind/internal/logging"
+	"podfind/internal/metrics"
 	"podfind/internal/migrate"
 	"podfind/internal/objstore"
 	"podfind/internal/search"
@@ -63,6 +68,7 @@ func envMillis(key string, def int) time.Duration {
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	logging.Setup()
 
 	cfg, err := pgxpool.ParseConfig(env("DATABASE_URL", defaultDatabaseURL))
 	if err != nil {
@@ -114,6 +120,8 @@ func main() {
 			VectorTimeout:  envMillis("PODFIND_VECTOR_TIMEOUT_MS", 1500),
 		},
 	}
+	metrics.BuildInfo.WithLabelValues(version.String(), info.BundleID, info.FeatureVersion).Set(1)
+	go metrics.WatchIndexes(ctx, pool, info.IndexModels, 10*time.Minute)
 	srv := &http.Server{
 		Addr:              env("PODFIND_API_ADDR", ":"+env("PORT", "8080")),
 		Handler:           api.New(svc, web.Static()),

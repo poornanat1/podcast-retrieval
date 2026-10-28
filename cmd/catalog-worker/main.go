@@ -19,7 +19,6 @@ import (
 	"context"
 	"flag"
 	"log"
-	"log/slog"
 	"os"
 	"os/signal"
 	"strconv"
@@ -30,6 +29,7 @@ import (
 
 	"podfind/internal/catalog"
 	"podfind/internal/jobs"
+	"podfind/internal/logging"
 	"podfind/internal/migrate"
 	"podfind/internal/objstore"
 	"podfind/internal/outbox"
@@ -49,7 +49,7 @@ func main() {
 	oneshot := flag.Bool("oneshot", false, "enqueue requested jobs and exit without processing")
 	flag.Parse()
 
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	logger := logging.Setup()
 	logger.Info("catalog-worker starting", "version", version.String())
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
