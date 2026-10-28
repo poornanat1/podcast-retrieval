@@ -43,7 +43,7 @@ make ci                                   # lint + tests + build
 | `make prewarm` | load the served vector indexes and rows into memory |
 | `make online-eval API=…` | score the running API on the relevance set |
 | `make serve-speech` | speech server (port 8082; `PODFIND_STT`, `PODFIND_STT_DEVICE`) |
-| `make speech-testset` | synthesize the speech test set (macOS `say` for reference voices, Chatterbox in `ml/speech/tts`) |
+| `make speech-testset SPEECH_CONFIG=…` | synthesize a speech test set: Chatterbox (`ml/speech/tts`, macOS `say` for reference voices) or ElevenLabs (`ELEVENLABS_API_KEY`) |
 | `make speech-eval API=…` | voice-robustness evaluation against the running API |
 | `make cohort-report COMPARE_JSON=…` | per-cohort tables with regressions against the baselines flagged |
 | `make eval EVAL_CONFIG=…` / `eval-all` | evaluate one system / every config in `experiments/eval/` |

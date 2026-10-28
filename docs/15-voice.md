@@ -91,13 +91,40 @@ counts as a skip and impressions are posted as for typed search.
 ## The speech test set
 
 No human recordings of the relevance queries exist, so the set is
-synthetic (`make speech-testset`, `experiments/speech/testset-v1.json`,
-`ml/speech/testset.py`). Chatterbox, a neural text-to-speech model, speaks
-each query while cloning a short reference recording; the references are
-macOS system voices in six English locales (US, GB, AU, IN, IE, ZA) and
-four other languages. "Accent" therefore means the accent of a synthetic
-voice as cloned by another model, and the set measures the recognizer on
-clean, well-articulated speech; real users will do worse.
+synthetic (`make speech-testset SPEECH_CONFIG=…`, `ml/speech/testset.py`),
+and two synthesizers are supported:
+
+- **v1, Chatterbox** (`experiments/speech/testset-v1.json`): a local
+  neural text-to-speech model speaks each query while cloning a short
+  reference recording; the references are macOS system voices in six
+  English locales (US, GB, AU, IN, IE, ZA) and four other languages.
+  "Accent" therefore means the accent of a synthetic voice as cloned by
+  another model. Free and offline.
+- **v2, ElevenLabs Eleven v4** (`experiments/speech/testset-v2.json`,
+  `ml/speech/elevenlabs.py`): one hosted multilingual model with voices
+  from its library chosen by accent and language, so the accents are
+  those of real speakers the voices were cloned from. Paid
+  (`ELEVENLABS_API_KEY`), and reproducible only as "same voice, model and
+  seed", which the manifest records. Terse clips are spoken bare; v4 does
+  not hallucinate on short names.
+
+v2 replaced v1 as the reported set, for four reasons found while building
+v1. Chatterbox hallucinated or truncated on bare two-word texts (*joe
+rogan* came out as *Plotkin*, *the daily wire* as a sentence of noise) in
+about four of ten seeds, which forced the carrier phrase and put a
+phrasing cost into every terse measurement. Its accents were second-hand:
+a model imitating Apple's synthetic voices, so the accent table could not
+be read as evidence about speakers. It pins torch 2.6 and numpy 1.x, so it
+needs its own environment and lock file. And it takes about five seconds
+per clip on the Apple GPU, so a rebuild is an hour of GPU time. Eleven v4
+has none of these: bare short names synthesize cleanly, the library
+voices carry real speakers' accents, nothing is installed, and 520 clips
+take a few minutes. The costs are a paid key, query text sent to a third
+party, and reproducibility by (voice, model, seed) rather than bit for
+bit. Chatterbox stays as the free, offline option.
+
+Either way the set measures the recognizer on clean, well-articulated
+speech; real users will do worse.
 
 | tier | clips | what varies |
 |---|---|---|
@@ -107,11 +134,11 @@ clean, well-articulated speech; real users will do worse.
 | condition | 540 | the subset's base clips under white noise (20, 10, 5, 0 dB SNR), background speech (10, 5 dB), a telephone band, a laptop microphone, a room |
 | speed | 180 | the subset's base clips at 0.8×, 1.3× and 1.6× speaking rate (phase vocoder, pitch kept) |
 
-Terse clips are spoken inside a carrier phrase, "Search for joe rogan.":
-on bare two-word texts Chatterbox hallucinated or truncated in about four
-of ten seeds, and did not in forty tries with the carrier. The evaluation
-measures the typed carrier text as the reference, so the carrier's own
-cost is reported, not hidden. The degradations are applied by
+In v1, terse clips are spoken inside a carrier phrase, "Search for joe
+rogan.": on bare two-word texts Chatterbox hallucinated or truncated in
+about four of ten seeds, and did not in forty tries with the carrier. The
+evaluation measures the typed carrier text as the reference, so the
+carrier's own cost is reported, not hidden. The degradations are applied by
 `ml/speech/degrade.py` to the clean clips, so each variant differs from
 its clean clip in one way, and everything is seeded. Named entities for
 the name queries are the longest span found in a catalog show or

@@ -1,0 +1,420 @@
+{
+  "testset": "data/speech/testset-v2",
+  "clips": 220,
+  "queries": 180,
+  "recognizers": [
+    "whisper:openai/whisper-small"
+  ],
+  "base": {
+    "clips": 180,
+    "wer": 0.0525,
+    "wer_zero_share": 0.9,
+    "entity_error_rate": 0.2167,
+    "reference_ndcg_at_10": 0.8968,
+    "transcript_ndcg_at_10": 0.8063,
+    "degradation_ndcg_at_10": 0.0905,
+    "reference_mrr": 0.9759,
+    "transcript_mrr": 0.9473,
+    "degradation_mrr": 0.0286,
+    "reference_recall_at_100": 0.4587,
+    "transcript_recall_at_100": 0.4059,
+    "degradation_recall_at_100": 0.0529,
+    "degradation_ci": {
+      "ndcg_at_10": {
+        "mean": 0.0905,
+        "ci95": [
+          0.0675,
+          0.1172
+        ]
+      },
+      "mrr": {
+        "mean": 0.0286,
+        "ci95": [
+          0.004,
+          0.0541
+        ]
+      },
+      "recall_at_100": {
+        "mean": 0.0529,
+        "ci95": [
+          0.0384,
+          0.0692
+        ]
+      }
+    },
+    "wer_zero": {
+      "clips": 162,
+      "degradation_ndcg_at_10": 0.0699,
+      "lowercased": {
+        "clips": 162,
+        "ndcg_at_10": {
+          "transcript": 0.8176,
+          "transcript_lowercased": 0.8888
+        },
+        "mrr": {
+          "transcript": 0.9658,
+          "transcript_lowercased": 0.9732
+        },
+        "recall_at_100": {
+          "transcript": 0.4214,
+          "transcript_lowercased": 0.4805
+        }
+      }
+    },
+    "wer_nonzero": {
+      "clips": 18,
+      "degradation_ndcg_at_10": 0.276
+    }
+  },
+  "lowercasing_the_transcript": {
+    "base": {
+      "clips": 180,
+      "ndcg_at_10": {
+        "transcript": 0.8063,
+        "transcript_lowercased": 0.8718
+      },
+      "mrr": {
+        "transcript": 0.9473,
+        "transcript_lowercased": 0.9527
+      },
+      "recall_at_100": {
+        "transcript": 0.4059,
+        "transcript_lowercased": 0.4607
+      }
+    },
+    "all": {
+      "clips": 220,
+      "ndcg_at_10": {
+        "transcript": 0.8017,
+        "transcript_lowercased": 0.856
+      },
+      "mrr": {
+        "transcript": 0.9464,
+        "transcript_lowercased": 0.9509
+      },
+      "recall_at_100": {
+        "transcript": 0.418,
+        "transcript_lowercased": 0.4662
+      }
+    }
+  },
+  "phrasing_cost": {
+    "terse_with_carrier": {
+      "ndcg_at_10": {
+        "labeled_query": 0.9319,
+        "spoken_text_typed": 0.8968,
+        "cost": 0.0351
+      },
+      "mrr": {
+        "labeled_query": 1.0,
+        "spoken_text_typed": 0.9759,
+        "cost": 0.0241
+      },
+      "recall_at_100": {
+        "labeled_query": 0.4885,
+        "spoken_text_typed": 0.4587,
+        "cost": 0.0297
+      }
+    },
+    "conversational": {
+      "ndcg_at_10": {
+        "labeled_query": 0.8756,
+        "spoken_text_typed": 0.7857,
+        "cost": 0.0899
+      },
+      "mrr": {
+        "labeled_query": 1.0,
+        "spoken_text_typed": 0.9428,
+        "cost": 0.0572
+      },
+      "recall_at_100": {
+        "labeled_query": 0.5161,
+        "spoken_text_typed": 0.4684,
+        "cost": 0.0478
+      }
+    }
+  },
+  "by_tier": {
+    "base": {
+      "clips": 180,
+      "wer": 0.0525,
+      "wer_zero_share": 0.9,
+      "entity_error_rate": 0.2167,
+      "reference_ndcg_at_10": 0.8968,
+      "transcript_ndcg_at_10": 0.8063,
+      "degradation_ndcg_at_10": 0.0905,
+      "reference_mrr": 0.9759,
+      "transcript_mrr": 0.9473,
+      "degradation_mrr": 0.0286,
+      "reference_recall_at_100": 0.4587,
+      "transcript_recall_at_100": 0.4059,
+      "degradation_recall_at_100": 0.0529
+    },
+    "conversational": {
+      "clips": 40,
+      "wer": 0.0021,
+      "wer_zero_share": 0.975,
+      "reference_ndcg_at_10": 0.7857,
+      "transcript_ndcg_at_10": 0.7808,
+      "degradation_ndcg_at_10": 0.005,
+      "reference_mrr": 0.9428,
+      "transcript_mrr": 0.9428,
+      "degradation_mrr": 0.0,
+      "reference_recall_at_100": 0.4684,
+      "transcript_recall_at_100": 0.4725,
+      "degradation_recall_at_100": -0.0041
+    }
+  },
+  "by_query_type": {
+    "entity": {
+      "clips": 20,
+      "wer": 0.15,
+      "wer_zero_share": 0.8,
+      "entity_error_rate": 0.2,
+      "reference_ndcg_at_10": 1.0,
+      "transcript_ndcg_at_10": 0.7666,
+      "degradation_ndcg_at_10": 0.2334,
+      "reference_mrr": 1.0,
+      "transcript_mrr": 0.9321,
+      "degradation_mrr": 0.0679,
+      "reference_recall_at_100": 0.3951,
+      "transcript_recall_at_100": 0.2864,
+      "degradation_recall_at_100": 0.1087
+    },
+    "exploratory": {
+      "clips": 85,
+      "wer": 0.0247,
+      "wer_zero_share": 0.9529,
+      "reference_ndcg_at_10": 0.8718,
+      "transcript_ndcg_at_10": 0.7954,
+      "degradation_ndcg_at_10": 0.0764,
+      "reference_mrr": 1.0,
+      "transcript_mrr": 0.9606,
+      "degradation_mrr": 0.0394,
+      "reference_recall_at_100": 0.5451,
+      "transcript_recall_at_100": 0.5077,
+      "degradation_recall_at_100": 0.0373
+    },
+    "filtered": {
+      "clips": 35,
+      "wer": 0.0286,
+      "wer_zero_share": 0.9714,
+      "reference_ndcg_at_10": 0.8002,
+      "transcript_ndcg_at_10": 0.7453,
+      "degradation_ndcg_at_10": 0.0549,
+      "reference_mrr": 0.8974,
+      "transcript_mrr": 0.9155,
+      "degradation_mrr": -0.0181,
+      "reference_recall_at_100": 0.3948,
+      "transcript_recall_at_100": 0.3556,
+      "degradation_recall_at_100": 0.0392
+    },
+    "navigational": {
+      "clips": 40,
+      "wer": 0.0836,
+      "wer_zero_share": 0.775,
+      "entity_error_rate": 0.225,
+      "reference_ndcg_at_10": 0.9829,
+      "transcript_ndcg_at_10": 0.9027,
+      "degradation_ndcg_at_10": 0.0802,
+      "reference_mrr": 0.9812,
+      "transcript_mrr": 0.9542,
+      "degradation_mrr": 0.0271,
+      "reference_recall_at_100": 0.3631,
+      "transcript_recall_at_100": 0.2933,
+      "degradation_recall_at_100": 0.0699
+    }
+  },
+  "by_voice": {},
+  "by_condition": {},
+  "by_speed": {},
+  "by_phrasing": {
+    "conversational": {
+      "clips": 40,
+      "wer": 0.0021,
+      "wer_zero_share": 0.975,
+      "reference_ndcg_at_10": 0.7857,
+      "transcript_ndcg_at_10": 0.7808,
+      "degradation_ndcg_at_10": 0.005,
+      "reference_mrr": 0.9428,
+      "transcript_mrr": 0.9428,
+      "degradation_mrr": 0.0,
+      "reference_recall_at_100": 0.4684,
+      "transcript_recall_at_100": 0.4725,
+      "degradation_recall_at_100": -0.0041
+    },
+    "terse": {
+      "clips": 40,
+      "wer": 0.005,
+      "wer_zero_share": 0.975,
+      "reference_ndcg_at_10": 0.7852,
+      "transcript_ndcg_at_10": 0.7209,
+      "degradation_ndcg_at_10": 0.0643,
+      "reference_mrr": 0.9428,
+      "transcript_mrr": 0.9428,
+      "degradation_mrr": 0.0,
+      "reference_recall_at_100": 0.4623,
+      "transcript_recall_at_100": 0.4299,
+      "degradation_recall_at_100": 0.0324
+    }
+  },
+  "by_wer_bin": {
+    "(0, 0.25]": {
+      "clips": 7,
+      "wer": 0.1992,
+      "wer_zero_share": 0.0,
+      "entity_error_rate": 1.0,
+      "reference_ndcg_at_10": 1.0,
+      "transcript_ndcg_at_10": 0.8771,
+      "degradation_ndcg_at_10": 0.1229,
+      "reference_mrr": 1.0,
+      "transcript_mrr": 0.9048,
+      "degradation_mrr": 0.0952,
+      "reference_recall_at_100": 0.456,
+      "transcript_recall_at_100": 0.3605,
+      "degradation_recall_at_100": 0.0954
+    },
+    "(0.25, 0.5]": {
+      "clips": 7,
+      "wer": 0.4476,
+      "wer_zero_share": 0.0,
+      "entity_error_rate": 1.0,
+      "reference_ndcg_at_10": 0.9619,
+      "transcript_ndcg_at_10": 0.631,
+      "degradation_ndcg_at_10": 0.3309,
+      "reference_mrr": 1.0,
+      "transcript_mrr": 0.6692,
+      "degradation_mrr": 0.3308,
+      "reference_recall_at_100": 0.4945,
+      "transcript_recall_at_100": 0.2631,
+      "degradation_recall_at_100": 0.2314
+    },
+    "0": {
+      "clips": 201,
+      "wer": 0.0,
+      "wer_zero_share": 1.0,
+      "entity_error_rate": 0.0,
+      "reference_ndcg_at_10": 0.8667,
+      "transcript_ndcg_at_10": 0.8099,
+      "degradation_ndcg_at_10": 0.0568,
+      "reference_mrr": 0.967,
+      "transcript_mrr": 0.961,
+      "degradation_mrr": 0.006,
+      "reference_recall_at_100": 0.4591,
+      "transcript_recall_at_100": 0.4309,
+      "degradation_recall_at_100": 0.0282
+    },
+    "> 0.5": {
+      "clips": 5,
+      "wer": 1.0,
+      "wer_zero_share": 0.0,
+      "entity_error_rate": 1.0,
+      "reference_ndcg_at_10": 0.9848,
+      "transcript_ndcg_at_10": 0.6049,
+      "degradation_ndcg_at_10": 0.3799,
+      "reference_mrr": 1.0,
+      "transcript_mrr": 0.8054,
+      "degradation_mrr": 0.1946,
+      "reference_recall_at_100": 0.477,
+      "transcript_recall_at_100": 0.1975,
+      "degradation_recall_at_100": 0.2796
+    }
+  },
+  "by_entity_outcome": {
+    "found": {
+      "clips": 47,
+      "wer": 0.0,
+      "wer_zero_share": 1.0,
+      "entity_error_rate": 0.0,
+      "reference_ndcg_at_10": 0.9854,
+      "transcript_ndcg_at_10": 0.8713,
+      "degradation_ndcg_at_10": 0.1142,
+      "reference_mrr": 0.984,
+      "transcript_mrr": 0.9645,
+      "degradation_mrr": 0.0195,
+      "reference_recall_at_100": 0.3693,
+      "transcript_recall_at_100": 0.305,
+      "degradation_recall_at_100": 0.0643
+    },
+    "missed": {
+      "clips": 2,
+      "wer": 1.0,
+      "wer_zero_share": 0.0,
+      "entity_error_rate": 1.0,
+      "reference_ndcg_at_10": 1.0,
+      "transcript_ndcg_at_10": 0.9207,
+      "degradation_ndcg_at_10": 0.0793,
+      "reference_mrr": 1.0,
+      "transcript_mrr": 1.0,
+      "degradation_mrr": 0.0,
+      "reference_recall_at_100": 0.3749,
+      "transcript_recall_at_100": 0.2451,
+      "degradation_recall_at_100": 0.1298
+    },
+    "near miss": {
+      "clips": 11,
+      "wer": 0.3949,
+      "wer_zero_share": 0.0,
+      "entity_error_rate": 1.0,
+      "reference_ndcg_at_10": 1.0,
+      "transcript_ndcg_at_10": 0.7863,
+      "degradation_ndcg_at_10": 0.2137,
+      "reference_mrr": 1.0,
+      "transcript_mrr": 0.8615,
+      "degradation_mrr": 0.1385,
+      "reference_recall_at_100": 0.3927,
+      "transcript_recall_at_100": 0.2394,
+      "degradation_recall_at_100": 0.1533
+    }
+  },
+  "latency_by_duration": {
+    "< 2 s": {
+      "clips": 59,
+      "audio_seconds_mean": 1.53,
+      "transcribe_ms": {
+        "p50": 360.5,
+        "p95": 457.3
+      },
+      "total_ms": {
+        "p50": 686.5,
+        "p95": 1030.9
+      }
+    },
+    "2–4 s": {
+      "clips": 130,
+      "audio_seconds_mean": 2.68,
+      "transcribe_ms": {
+        "p50": 372.6,
+        "p95": 485.9
+      },
+      "total_ms": {
+        "p50": 670.5,
+        "p95": 931.2
+      }
+    },
+    "4–8 s": {
+      "clips": 31,
+      "audio_seconds_mean": 4.68,
+      "transcribe_ms": {
+        "p50": 404.2,
+        "p95": 474.5
+      },
+      "total_ms": {
+        "p50": 601.2,
+        "p95": 794.6
+      }
+    }
+  },
+  "language_detection": {
+    "non_english_clips": 6,
+    "detected_correctly": 6,
+    "english_detected_as_other": 0
+  },
+  "legs": {
+    "e5:ok": 219,
+    "e5:timeout": 1,
+    "lexical:ok": 126,
+    "lexical:timeout": 94,
+    "two_tower:ok": 220
+  }
+}

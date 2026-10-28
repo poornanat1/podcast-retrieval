@@ -1,0 +1,122 @@
+{
+  "name": "speech-testset-v2",
+  "relevance_dir": "data/relevance",
+  "out_dir": "data/speech/testset-v2",
+  "seed": 20261026,
+  "sample_rate": 24000,
+  "synthesizer": {
+    "kind": "elevenlabs",
+    "model_id": "eleven_v4",
+    "settings": {
+      "stability": 0.5,
+      "similarity_boost": 0.75,
+      "style": 0.0,
+      "speed": 1.0
+    }
+  },
+  "voices": {
+    "en_us": {
+      "locale": "en_US",
+      "language": "en",
+      "voice_id": "EXAVITQu4vr4xnSDxMaL",
+      "voice_name": "Sarah"
+    },
+    "en_gb": {
+      "locale": "en_GB",
+      "language": "en",
+      "voice_id": "onwK4e9ZLuTAKqWW03F9",
+      "voice_name": "Daniel"
+    },
+    "en_au": {
+      "locale": "en_AU",
+      "language": "en",
+      "voice_id": "IKne3meq5aSn9XLyUdCD",
+      "voice_name": "Charlie"
+    },
+    "en_in": {
+      "locale": "en_IN",
+      "language": "en",
+      "voice_id": "nMk40SWEJ6fx4KdJU3tB",
+      "voice_name": "Rohan"
+    },
+    "en_ie": {
+      "locale": "en_IE",
+      "language": "en",
+      "voice_id": "ehKZw5kruBt73Gytae2x",
+      "voice_name": "Robyn"
+    },
+    "en_za": {
+      "locale": "en_ZA",
+      "language": "en",
+      "voice_id": "r8XTDZCx9nnTPYmkFIeg",
+      "voice_name": "Isabella"
+    },
+    "es": {
+      "locale": "es_MX",
+      "language": "es",
+      "voice_id": "DY9A332o69lIyb5Cox4v",
+      "voice_name": "Diana"
+    },
+    "fr": {
+      "locale": "fr_FR",
+      "language": "fr",
+      "voice_id": "2oMnSKxLeHBxE0KdeHJD",
+      "voice_name": "Natasha Asher"
+    },
+    "de": {
+      "locale": "de_DE",
+      "language": "de",
+      "voice_id": "ZoxS77tXeRuNRJNif3rR",
+      "voice_name": "Mila"
+    },
+    "pt": {
+      "locale": "pt_BR",
+      "language": "pt",
+      "voice_id": "BQzELs93jJsUOf5rCb9p",
+      "voice_name": "Vanessa"
+    }
+  },
+  "base_voice": "en_us",
+  "accents": [
+    "en_gb",
+    "en_au",
+    "en_in",
+    "en_ie",
+    "en_za"
+  ],
+  "carrier": "{}",
+  "text_language": {
+    "q544ef574": "fr",
+    "q7149ba9d": "de",
+    "q77ddf63a": "de",
+    "q9ee3557c": "pt",
+    "qd92ca4ef": "es",
+    "qf33dc047": "es"
+  },
+  "subset_per_type": {
+    "navigational": 15,
+    "entity": 10,
+    "exploratory": 20,
+    "filtered": 15
+  },
+  "conversational_per_type": {
+    "exploratory": 25,
+    "filtered": 15
+  },
+  "conditions": [
+    "noise_20db",
+    "noise_10db",
+    "noise_5db",
+    "noise_0db",
+    "babble_10db",
+    "babble_5db",
+    "telephone",
+    "laptop_mic",
+    "reverb"
+  ],
+  "speeds": {
+    "slow": 0.8,
+    "fast": 1.3,
+    "very_fast": 1.6
+  }
+}

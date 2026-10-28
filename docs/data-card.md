@@ -90,6 +90,14 @@ LLM-generated (`judge: llm:<model>`), each with a rationale; human review
 via the grading CLI overrides LLM grades at export. The eval set is **never
 used for training** — its only role is measurement.
 
+**Speech test set** (`data/speech/testset-v*/`, configs in
+`experiments/speech/`): spoken versions of the 180 relevance queries, all
+synthetic. v1 is Chatterbox cloning macOS system voices; v2 is ElevenLabs
+Eleven v4 with library voices chosen by accent and language. No human
+speech is in either set, and the voice-robustness report treats them as a
+lower bound. Audio is not tracked in git; the manifests record the model,
+voice and seed of every clip.
+
 ## Known biases and limitations
 
 - **Popularity skew:** the catalog was seeded from trending charts plus
@@ -122,6 +130,12 @@ versions in object storage are immutable.
 - Catalog content remains the property of its publishers; only required
   metadata and transcript text are stored, with attribution preserved and
   feed removal honored (see `docs/licensing.md`).
-- No personal user data exists in any current dataset. When interaction
-  events arrive, examples will carry pseudonymous ids only, and voice
-  recordings are deleted after transcription unless users opt in.
+- No personal user data exists in any current dataset. Interaction events
+  and searches carry a client-chosen session id only; voice recordings are
+  deleted after transcription unless the user opts in, and a session can
+  export or delete everything stored for it.
+- The speech test set's audio is generated: v1 with Chatterbox (MIT
+  licensed, run locally) cloning Apple system voices; v2 with ElevenLabs
+  under a paid (Starter) plan, whose terms allow commercial use of the
+  output, from library voices their owners shared for that use. The clips
+  are evaluation data only and are not redistributed.

@@ -3,14 +3,22 @@
     uv run python -m ml.speech.testset --config experiments/speech/testset-v1.json
 
 No human recordings exist for these queries, so the set is synthetic and
-says so. Chatterbox (a neural text-to-speech model, in its own environment
-under ``ml/speech/tts``) speaks each query while cloning the voice of a
-short reference recording; the references are macOS system voices in six
-English locales and four other languages, so "accent" here means the
-accent of a synthetic voice as cloned by another model. Noise,
-microphones, rooms and speaking rates are then applied to the clean clips
-by ``ml.speech.degrade``, so each variant differs from its clean clip in
-exactly one way.
+says so. Two synthesizers are supported, chosen by the config's
+``synthesizer.kind``:
+
+- ``chatterbox``: a local model (in its own environment under
+  ``ml/speech/tts``) that speaks each query while cloning a short
+  reference recording; the references are macOS system voices, so
+  "accent" means the accent of a synthetic voice as cloned by another
+  model. Free and offline; hallucinates on bare two-word texts, hence the
+  carrier phrase in the v1 config.
+- ``elevenlabs``: the hosted Eleven v4 model with real-accent voices from
+  its voice library (``ml.speech.elevenlabs``). Paid; reproducible as
+  "same voice, model and seed".
+
+Noise, microphones, rooms and speaking rates are then applied to the
+clean clips by ``ml.speech.degrade``, so each variant differs from its
+clean clip in exactly one way.
 
 Tiers (counts for the v1 config):
 
@@ -69,10 +77,38 @@ def say_reference(path: Path, voice: str, text: str, rate: int) -> None:
                    check=True)
 
 
-def run_synthesizer(jobs_file: Path) -> None:
+def run_chatterbox(jobs_file: Path) -> None:
     project = Path(__file__).parent / "tts"
     subprocess.run(["uv", "run", "--project", str(project), "python",
                     str(project / "synthesize.py"), "--jobs", str(jobs_file)], check=True)
+
+
+def run_elevenlabs(jobs_file: Path, client=None) -> None:
+    """Synthesize the pending jobs through ElevenLabs. Each job names its
+    voice id, language and seed; existing outputs are skipped."""
+    from ml.speech.elevenlabs import ElevenLabs
+
+    jobs = [json.loads(line) for line in jobs_file.read_text().splitlines() if line.strip()]
+    pending = [j for j in jobs if not Path(j["path"]).exists()]
+    if not pending:
+        return
+    client = client or ElevenLabs(model_id=pending[0]["model_id"])
+    print(f"{len(jobs)} jobs, {len(pending)} to synthesize with {client.model_id}", flush=True)
+    for n, job in enumerate(pending, 1):
+        clip = client.synthesize(job["text"], job["voice_id"], rate=job["rate"], seed=job["seed"],
+                                 language=job.get("language_code"), settings=job.get("settings"))
+        Path(job["path"]).parent.mkdir(parents=True, exist_ok=True)
+        audio.write(Path(job["path"]), audio.to_mono(clip), clip.rate)
+        if n % 25 == 0 or n == len(pending):
+            print(f"{n}/{len(pending)} clips", flush=True)
+
+
+def run_synthesizer(jobs_file: Path) -> None:
+    first = jobs_file.read_text().splitlines()[0]
+    if json.loads(first).get("synthesizer") == "elevenlabs":
+        run_elevenlabs(jobs_file)
+    else:
+        run_chatterbox(jobs_file)
 
 
 def stratified_subset(queries: list[dict], per_type: dict[str, int], rng: np.random.Generator,
@@ -119,17 +155,19 @@ def build(config: dict, synthesize: bool = True,
     text_language = config.get("text_language", {})
 
     voices = config["voices"]
-    for key, voice in voices.items():
-        ref = out / "references" / f"{key}.wav"
-        if not ref.exists():
-            say(ref, voice["say"], config["reference_text"][voice["language"]], rate)
+    synth_cfg = config.get("synthesizer", {"kind": "chatterbox"})
+    if synth_cfg["kind"] == "chatterbox":
+        for key, voice in voices.items():
+            ref = out / "references" / f"{key}.wav"
+            if not ref.exists():
+                say(ref, voice["say"], config["reference_text"][voice["language"]], rate)
     by_language = {v["language"]: k for k, v in voices.items() if k not in config["accents"]}
     by_language["en"] = config["base_voice"]
 
     subset = stratified_subset(queries, config["subset_per_type"], rng, text_language)
     conversational = stratified_subset(queries, config["conversational_per_type"], rng,
                                        text_language)
-    synth = config["synthesis"]
+    synth = config.get("synthesis", {})
 
     def clip(q: dict, tier: str, phrasing: str, text: str, voice: str) -> dict:
         clip_id = f"{q['query_id']}-{phrasing[0]}-{voice}"
@@ -152,9 +190,22 @@ def build(config: dict, synthesize: bool = True,
         rows.append(clip(q, "conversational", "conversational", template.format(q["query_text"]),
                          by_language[query_language(q, text_language)]))
 
-    jobs = [{"clip_id": r["clip_id"], "text": r["text"], "language": r["language"],
-             "reference": str(out / "references" / f"{r['voice']}.wav"),
-             "path": str(out / r["path"]), **synth} for r in rows]
+    if synth_cfg["kind"] == "chatterbox":
+        jobs = [{"clip_id": r["clip_id"], "text": r["text"], "language": r["language"],
+                 "reference": str(out / "references" / f"{r['voice']}.wav"),
+                 "path": str(out / r["path"]), **synth} for r in rows]
+    else:
+        jobs = [{"synthesizer": "elevenlabs", "clip_id": r["clip_id"], "text": r["text"],
+                 "language": r["language"], "language_code": r["language"],
+                 "voice_id": voices[r["voice"]]["voice_id"], "model_id": synth_cfg["model_id"],
+                 "rate": rate, "seed": stable_hash(r["clip_id"]),
+                 "settings": synth_cfg.get("settings"), "path": str(out / r["path"])}
+                for r in rows]
+    for r in rows:
+        r["synthesizer"] = synth_cfg["kind"]
+        if synth_cfg["kind"] == "elevenlabs":
+            r["model_id"] = synth_cfg["model_id"]
+            r["voice_id"] = voices[r["voice"]]["voice_id"]
     jobs_file = out / "jobs.jsonl"
     jobs_file.write_text("".join(json.dumps(j) + "\n" for j in jobs))
     if synthesize:

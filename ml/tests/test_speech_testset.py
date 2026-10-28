@@ -151,3 +151,42 @@ def test_build_manifest_with_fake_synthesizer(tmp_path) -> None:
     # Rebuilding reuses every file and gives the same manifest.
     again = build(config, say=say, synthesizer=synthesizer, names={" topic 1 "})
     assert again == rows
+
+
+def test_build_with_elevenlabs_jobs(tmp_path) -> None:
+    relevance = tmp_path / "relevance"
+    relevance.mkdir()
+    (relevance / "queries.jsonl").write_text(
+        "".join(json.dumps(q) + "\n" for q in _queries()))
+    config = {
+        "seed": 1, "sample_rate": 24_000, "relevance_dir": str(relevance),
+        "out_dir": str(tmp_path / "set"),
+        "synthesizer": {"kind": "elevenlabs", "model_id": "eleven_v4",
+                        "settings": {"stability": 0.5}},
+        "voices": {"en_us": {"locale": "en_US", "language": "en", "voice_id": "v-us"},
+                   "en_in": {"locale": "en_IN", "language": "en", "voice_id": "v-in"},
+                   "es": {"locale": "es_MX", "language": "es", "voice_id": "v-es"}},
+        "base_voice": "en_us", "accents": ["en_in"], "carrier": "{}",
+        "text_language": {"q11": "es"}, "subset_per_type": {"entity": 1},
+        "conversational_per_type": {}, "conditions": ["telephone"], "speeds": {},
+    }
+    seen = []
+
+    def synthesizer(jobs_file):
+        for line in jobs_file.read_text().splitlines():
+            job = json.loads(line)
+            seen.append(job)
+            audio.write(job["path"], np.resize(speech_like(1.0), 24_000), 24_000)
+
+    def say(*args):
+        raise AssertionError("no reference recordings for a hosted synthesizer")
+
+    rows = build(config, say=say, synthesizer=synthesizer, names=set())
+    assert all(j["synthesizer"] == "elevenlabs" and j["model_id"] == "eleven_v4" for j in seen)
+    spanish = next(j for j in seen if j["clip_id"].startswith("q11-"))
+    assert spanish["voice_id"] == "v-es" and spanish["language_code"] == "es"
+    assert spanish["settings"] == {"stability": 0.5} and isinstance(spanish["seed"], int)
+    base = next(r for r in rows if r["query_id"] == "q0" and r["tier"] == "base")
+    assert base["text"] == "topic 0" and base["voice_id"] == "v-us"
+    assert base["synthesizer"] == "elevenlabs" and base["model_id"] == "eleven_v4"
+    assert not list((tmp_path / "set" / "references").glob("*.wav"))

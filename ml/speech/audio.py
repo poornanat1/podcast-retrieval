@@ -80,6 +80,10 @@ def decode(data: bytes) -> Clip:
     return Clip(samples=samples, rate=rate)
 
 
+def to_mono(clip: Clip) -> np.ndarray:
+    return clip.samples if clip.samples.ndim == 1 else clip.samples.mean(axis=1)
+
+
 def to_mono_16k(clip: Clip) -> np.ndarray:
     """Average channels and resample to 16 kHz."""
     samples = clip.samples if clip.samples.ndim == 1 else clip.samples.mean(axis=1)

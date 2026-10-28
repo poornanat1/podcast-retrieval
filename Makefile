@@ -154,14 +154,14 @@ serve-models:
 serve-speech:
 	$(UV) run python -m ml.speech.server
 
-SPEECH_CONFIG ?= experiments/speech/testset-v1.json
-SPEECH_SET ?= data/speech/testset-v1
+SPEECH_CONFIG ?= experiments/speech/testset-v2.json
+SPEECH_SET ?= data/speech/testset-v2
 
 speech-testset:
 	$(UV) run python -m ml.speech.testset --config $(SPEECH_CONFIG)
 
 speech-eval:
-	$(UV) run python -m ml.speech.evaluate --testset $(SPEECH_SET) --api $(API) --json-out experiments/speech/results-v1.json
+	$(UV) run python -m ml.speech.evaluate --testset $(SPEECH_SET) --api $(API) --json-out experiments/speech/results.json
 
 prewarm:
 	$(UV) run python -m ml.serving.prewarm --bundle $(BUNDLE)
