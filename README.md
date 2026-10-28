@@ -98,7 +98,9 @@ PODFIND_DEBUG=1 PODFIND_LEXICAL_TIMEOUT_MS=60000 PODFIND_VECTOR_TIMEOUT_MS=60000
 make parity API=http://localhost:8080 && make promote   # parity gates promotion; restart the API without debug after
 ```
 
-Then open http://localhost:8080.
+Then open http://localhost:8080. `make monitoring` adds Prometheus and
+Grafana on http://localhost:3000. The deployed system runs on Railway
+from `.railway/railway.ts`; see [docs/11-deployment.md](docs/11-deployment.md).
 
 Every target is in the [Makefile](Makefile); the docs start at
 [docs/00-overview.md](docs/00-overview.md).

@@ -46,6 +46,11 @@ make ci                                   # lint + tests + build
 | `make speech-testset SPEECH_CONFIG=…` | synthesize a speech test set: Chatterbox (`ml/speech/tts`, macOS `say` for reference voices) or ElevenLabs (`ELEVENLABS_API_KEY`) |
 | `make speech-eval API=…` | voice-robustness evaluation against the running API |
 | `make cohort-report COMPARE_JSON=…` | per-cohort tables with regressions against the baselines flagged |
+| `make images` | build the API, model-server and speech-server images as Railway does |
+| `make publish-bundle BUNDLE=…` | upload the promoted bundle to the object store for the deployed model server |
+| `make monitoring` | Prometheus and Grafana (http://localhost:3000, admin/podfind) against the host servers |
+| `make drift` / `make drift-baseline` | the drift check over the last `DRIFT_HOURS` / record a new baseline |
+| `make loadtest API=… LOAD_CONCURRENCY=… LOAD_DURATION=…` | drive the API and report latency, availability and event persistence |
 | `make eval EVAL_CONFIG=…` / `eval-all` | evaluate one system / every config in `experiments/eval/` |
 
 Variables (`CONFIG`, `SNAPSHOT`, `POOL_SYSTEMS`, `TRAIN_CONFIG`, `ARTIFACT`,

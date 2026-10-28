@@ -1,0 +1,30 @@
+{
+  "started": "2026-10-28T23:18:25.67519Z",
+  "duration": "2m0.001s",
+  "concurrency": 6,
+  "api": "http://localhost:8080",
+  "searches": 913,
+  "searches_per_second": 7.6082601936698415,
+  "search_status": {
+    "200": 913
+  },
+  "availability": 1,
+  "search_ms": {
+    "max": 1921.757,
+    "n": 913,
+    "p50": 696.614,
+    "p95": 1523.873,
+    "p99": 1692.459
+  },
+  "events_sent": 18690,
+  "events_accepted": 18690,
+  "events_stored": -1,
+  "event_persistence": 1,
+  "event_ms": {
+    "max": 35.363,
+    "n": 1780,
+    "p50": 8.216,
+    "p95": 15.823,
+    "p99": 23.571
+  }
+}

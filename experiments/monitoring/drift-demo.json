@@ -1,0 +1,349 @@
+{
+  "findings": [
+    {
+      "name": "zero_results",
+      "severity": "warning",
+      "message": "zero-result rate 61% (baseline 3%)",
+      "value": 0.6082893745290128,
+      "limit": 0.17519167579408543
+    },
+    {
+      "name": "leg_e5",
+      "severity": "critical",
+      "message": "e5 leg failed or timed out on 100% of searches",
+      "value": 1.0,
+      "limit": 0.1
+    },
+    {
+      "name": "leg_two_tower",
+      "severity": "critical",
+      "message": "two_tower leg failed or timed out on 100% of searches",
+      "value": 1.0,
+      "limit": 0.1
+    },
+    {
+      "name": "top_score_psi",
+      "severity": "critical",
+      "message": "top-score distribution PSI 0.41 (mean 2.28 vs 2.69)",
+      "value": 0.4108714270028877,
+      "limit": 0.25
+    },
+    {
+      "name": "source_mix_psi",
+      "severity": "critical",
+      "message": "result-source mix PSI 11.65 (e5 0%, lexical 100%, two_tower 0%)",
+      "value": 11.653309740556088,
+      "limit": 0.25
+    },
+    {
+      "name": "feature_two_tower_sim_gap",
+      "severity": "warning",
+      "message": "two_tower_sim_gap mean -11.5 vs baseline -1.07",
+      "value": 9.750435531903676,
+      "limit": 0.5
+    },
+    {
+      "name": "feature_e5_sim_gap",
+      "severity": "warning",
+      "message": "e5_sim_gap mean -3.09 vs baseline -0.298",
+      "value": 9.379815246532111,
+      "limit": 0.5
+    },
+    {
+      "name": "feature_transcript_sim",
+      "severity": "warning",
+      "message": "transcript_sim mean 0.401 vs baseline 0.0981",
+      "value": 3.0875088111927838,
+      "limit": 0.5
+    },
+    {
+      "name": "feature_lex_transcript",
+      "severity": "warning",
+      "message": "lex_transcript mean 0.102 vs baseline 0.0276",
+      "value": 2.6952240963080794,
+      "limit": 0.5
+    },
+    {
+      "name": "feature_lexical_rr",
+      "severity": "warning",
+      "message": "lexical_rr mean 0.0942 vs baseline 0.0067",
+      "value": 13.071942794199588,
+      "limit": 0.5
+    },
+    {
+      "name": "feature_e5_rr",
+      "severity": "warning",
+      "message": "e5_rr mean 0 vs baseline 0.0511",
+      "value": 1.0,
+      "limit": 0.5
+    },
+    {
+      "name": "feature_two_tower_rr",
+      "severity": "warning",
+      "message": "two_tower_rr mean 0 vs baseline 0.051",
+      "value": 1.0,
+      "limit": 0.5
+    },
+    {
+      "name": "feature_query_in_title",
+      "severity": "warning",
+      "message": "query_in_title mean 0.0932 vs baseline 0.0351",
+      "value": 1.6542879179275294,
+      "limit": 0.5
+    },
+    {
+      "name": "feature_has_transcript",
+      "severity": "warning",
+      "message": "has_transcript mean 0.5 vs baseline 0.12",
+      "value": 3.1704997041112075,
+      "limit": 0.5
+    }
+  ],
+  "current": {
+    "searches": 6635,
+    "zero_result_rate": 0.6082893745290128,
+    "rrf_rate": 0.0,
+    "leg_status": {
+      "lexical": {
+        "timeout": 0.5859834212509419,
+        "ok": 0.414016578749058
+      },
+      "e5": {
+        "timeout": 1.0
+      },
+      "two_tower": {
+        "timeout": 1.0
+      }
+    },
+    "timings_ms": {
+      "total_ms": {
+        "p50": 300.185,
+        "p95": 301.239,
+        "n": 6635
+      },
+      "encode_ms": {
+        "p50": 14.581,
+        "p95": 20.69329999999996,
+        "n": 6635
+      },
+      "retrieve_ms": {
+        "p50": 300.108,
+        "p95": 301.122,
+        "n": 6635
+      },
+      "evidence_ms": {
+        "p50": 37.732,
+        "p95": 58.975899999999996,
+        "n": 2599
+      },
+      "rerank_ms": {
+        "p50": 6.015,
+        "p95": 8.525299999999994,
+        "n": 2599
+      }
+    },
+    "top_score_hist": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.014236244709503656,
+      0.014236244709503656,
+      0.08426317814544056,
+      0.06079261254328588,
+      0.08118507118122355,
+      0.1519815313582147,
+      0.18083878414774912,
+      0.13120430934974991,
+      0.07233551365909965,
+      0.08118507118122355,
+      0.08541746825702193,
+      0.04232397075798384,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "top_score_mean": 2.2755877810310703,
+    "source_mix": {
+      "lexical": 1.0,
+      "e5": 0.0,
+      "two_tower": 0.0
+    },
+    "bundles": {
+      "42df3779d7cf": 6635
+    },
+    "inputs": {
+      "text": 6635
+    },
+    "window_hours": 0.11704540194444445,
+    "computed_at": "2026-10-28T23:27:30.620535+00:00",
+    "features": {
+      "two_tower_sim": {
+        "mean": 0.5132446180269209,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "two_tower_sim_gap": {
+        "mean": -11.485235149724721,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "e5_sim": {
+        "mean": 0.8299688736199656,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "e5_sim_gap": {
+        "mean": -3.0943722648585434,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "transcript_sim": {
+        "mean": 0.4011049153151621,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "lex_score": {
+        "mean": 0.681231035632704,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "lex_score_rel": {
+        "mean": 0.4961796276389519,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "lex_episode": {
+        "mean": 0.4335468441529214,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "lex_transcript": {
+        "mean": 0.10192867580688565,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "lex_podcast": {
+        "mean": 0.29151103016047,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "lexical_rr": {
+        "mean": 0.09421654100276124,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "e5_rr": {
+        "mean": 0.0,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "two_tower_rr": {
+        "mean": 0.0,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "legs": {
+        "mean": 1.0,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "rrf_score": {
+        "mean": 0.012154661142085521,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "show_exact": {
+        "mean": 0.2200407019416828,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "show_in_query": {
+        "mean": 0.2200407019416828,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "query_in_show": {
+        "mean": 0.24906585707613263,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "show_coverage": {
+        "mean": 0.2780610461345052,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "publisher_exact": {
+        "mean": 0.06363848668846334,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "publisher_in_query": {
+        "mean": 0.07865149796490291,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "publisher_coverage": {
+        "mean": 0.1002289883659665,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "query_in_title": {
+        "mean": 0.09315573497030759,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "title_coverage": {
+        "mean": 0.21153953246553053,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "description_coverage": {
+        "mean": 0.4659315283795718,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "query_tokens": {
+        "mean": 4.25241042236605,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "log_age_days": {
+        "mean": 6.402948481998251,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "log_duration": {
+        "mean": 7.7028468225257924,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "log_show_episodes": {
+        "mean": 7.039545646890706,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "popularity": {
+        "mean": 0.6101267060083863,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      },
+      "has_transcript": {
+        "mean": 0.4998748915726963,
+        "count": 121340.2377343669,
+        "nan": 0.0
+      }
+    }
+  },
+  "baseline_computed_at": "2026-10-28T23:20:25.931588+00:00"
+}

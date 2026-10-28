@@ -44,8 +44,15 @@ Built and measured:
   deletion, and a voice-robustness evaluation on a synthetic speech test
   set. [15-voice.md](15-voice.md)
 
-Not built yet: deployment manifests and monitoring. The ML worker entry
-point is a scaffold.
+- **Deployment and monitoring** — one container image per process,
+  declared for Railway as infrastructure in code with Postgres and object
+  storage; Prometheus metrics from every service, a provisioned Grafana
+  dashboard with alert rules, a scheduled drift check against a recorded
+  baseline (exercised with a real serving skew), and a load tester for
+  the SLOs. [11-deployment.md](11-deployment.md),
+  [16-monitoring.md](16-monitoring.md)
+
+The ML worker entry point is a scaffold.
 
 ## Documents
 
@@ -61,11 +68,12 @@ point is a scaffold.
 | [08-models.md](08-models.md) | Two-tower model, training loop, artifacts, indexes |
 | [09-catalog.md](09-catalog.md) | Discovery, RSS polling, dedup, transcripts, jobs |
 | [10-database.md](10-database.md) | Schema and migrations |
-| [11-deployment.md](11-deployment.md) | What runs where today |
+| [11-deployment.md](11-deployment.md) | Railway: services, images, first deployment, catalog load, rollback; the local stack |
 | [12-observability.md](12-observability.md) | What is tracked today |
 | [13-development.md](13-development.md) | Setup, Make targets, tests, conventions |
 | [14-serving.md](14-serving.md) | Model bundle, model server, Go API, events, parity and promotion |
 | [15-voice.md](15-voice.md) | Voice search, the speech server, data controls, the speech test set and its evaluation |
+| [16-monitoring.md](16-monitoring.md) | Metrics, alerts, the drift check and its skew demonstration, the load test |
 | [data-card.md](data-card.md) | Data sources, label taxonomy, freeze state, training-data coverage |
 | [model-card.md](model-card.md) | The registered retriever: data, evaluation, cold start, failure modes |
 | [licensing.md](licensing.md) | Rights and responsibilities for podcast content |
@@ -73,13 +81,14 @@ point is a scaffold.
 ## Layout
 
 ```
-cmd/            api, catalog-worker, migrate; ml-worker is a scaffold
-internal/       api, search, catalog, rss, transcript, discovery, particle, jobs, outbox, objstore, migrate, pgtest, version
+cmd/            api, catalog-worker, migrate, loadtest; ml-worker is a scaffold
+internal/       api, search, catalog, rss, transcript, discovery, particle, jobs, outbox, objstore, metrics, logging, migrate, pgtest, version
 migrations/     PostgreSQL schema, applied by `make migrate`
-ml/             datasets, features, models, training, embeddings, hard_negatives, retrieval, ranking, serving, speech, sql, relevance, evaluation, tests
+ml/             datasets, features, models, training, embeddings, hard_negatives, retrieval, ranking, serving, speech, monitoring, sql, relevance, evaluation, tests
 web/            the web app, embedded into the API
 api/openapi/    the API's OpenAPI description
-experiments/    datasets/, training/, eval/, ranking/, speech/ configs and the reports
+experiments/    datasets/, training/, eval/, ranking/, speech/, monitoring/, load/ configs, baselines and the reports
 data/           relevance/ (tracked); snapshots/, datasets/, models/ (local, gitignored)
-deploy/         compose init script; helm/ and openshift/ are placeholders
+deploy/         compose init script, Railway helpers, the Prometheus and Grafana images
+.railway/       the Railway project as infrastructure in code
 ```
