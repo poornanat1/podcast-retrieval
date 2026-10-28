@@ -27,6 +27,8 @@ groups:
       - uid: zero-results
         title: Zero-result rate
         condition: C
+        noDataState: OK
+        execErrState: Error
         for: 10m
         labels: { severity: warning }
         annotations: { summary: "More than 20% of searches returned nothing over the last 30 minutes." }
@@ -41,6 +43,8 @@ groups:
       - uid: vector-leg-failures
         title: Vector leg failures
         condition: C
+        noDataState: OK
+        execErrState: Error
         for: 5m
         labels: { severity: critical }
         annotations: { summary: "A vector retrieval leg (e5 or two_tower) failed or timed out on more than 10% of searches." }
@@ -55,6 +59,8 @@ groups:
       - uid: rerank-fallback
         title: Reranker fallback to RRF
         condition: C
+        noDataState: OK
+        execErrState: Error
         for: 5m
         labels: { severity: critical }
         annotations: { summary: "More than 5% of searches were ordered by RRF because reranking failed." }
@@ -69,6 +75,8 @@ groups:
       - uid: search-latency
         title: Search p95 latency
         condition: C
+        noDataState: OK
+        execErrState: Error
         for: 10m
         labels: { severity: warning }
         annotations: { summary: "Search p95 (excluding transcription) is above 1 s over the last 15 minutes; the budget is 500 ms." }
@@ -83,6 +91,8 @@ groups:
       - uid: feature-nan
         title: Non-finite feature values
         condition: C
+        noDataState: OK
+        execErrState: Error
         for: 1m
         labels: { severity: critical }
         annotations: { summary: "The model server saw NaN or infinite feature values: a training-serving skew in the evidence." }
@@ -97,6 +107,8 @@ groups:
       - uid: query-norm
         title: Query vector norm drift
         condition: C
+        noDataState: OK
+        execErrState: Error
         for: 5m
         labels: { severity: critical }
         annotations: { summary: "Query vectors are no longer unit-norm: the served tower or tokenizer differs from the one that built the index." }
@@ -111,6 +123,8 @@ groups:
       - uid: index-age
         title: Vector index age
         condition: C
+        noDataState: OK
+        execErrState: Error
         for: 1h
         labels: { severity: warning }
         annotations: { summary: "The newest vector of a served model is older than 45 days; the embedding job has not run against new content." }
@@ -125,6 +139,8 @@ groups:
       - uid: api-errors
         title: API server errors
         condition: C
+        noDataState: OK
+        execErrState: Error
         for: 5m
         labels: { severity: critical }
         annotations: { summary: "More than 1% of API requests returned 5xx over the last 10 minutes (availability target 99.9%)." }
@@ -139,6 +155,8 @@ groups:
       - uid: no-scrape
         title: Service not reachable
         condition: C
+        noDataState: OK
+        execErrState: Error
         for: 3m
         labels: { severity: critical }
         annotations: { summary: "Prometheus cannot scrape a PodFind service (api, models or speech)." }
