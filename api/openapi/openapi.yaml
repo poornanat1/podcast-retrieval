@@ -69,7 +69,7 @@ paths:
       parameters:
         - { name: queryId, in: path, required: true, schema: { type: string } }
       responses:
-        "200": { description: The stored search }
+        "200": { description: The stored search. It never includes the session id, which alone authorizes export and deletion. }
         "404": { $ref: "#/components/responses/Error" }
   /v1/episodes/{episodeId}:
     get:
@@ -203,11 +203,11 @@ components:
         transcript: { $ref: "#/components/schemas/Transcript" }
     SearchRequest:
       type: object
-      required: [query]
+      required: [query, session_id]
       properties:
         query: { type: string, maxLength: 1000, description: Free text; filters are also parsed from it }
         filters: { $ref: "#/components/schemas/Filters" }
-        session_id: { type: string }
+        session_id: { type: string, maxLength: 128, description: Required; identifies the device session for export and deletion }
         limit: { type: integer, minimum: 1, maximum: 100, default: 20 }
         input: { $ref: "#/components/schemas/Input" }
     SearchResponse:

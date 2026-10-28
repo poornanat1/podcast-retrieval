@@ -126,7 +126,10 @@ func (s *Service) Search(ctx context.Context, req Request) (Response, error) {
 	if s.Now != nil {
 		now = s.Now
 	}
-	if req.started.IsZero() { // a client request; SearchVoice sets its own Input
+	if req.started.IsZero() { // a client request; SearchVoice validated its own
+		if err := checkSession(req.SessionID); err != nil {
+			return Response{}, err
+		}
 		if err := s.checkInput(ctx, req.Input, req.SessionID); err != nil {
 			return Response{}, err
 		}
@@ -337,10 +340,12 @@ func (s *Service) save(ctx context.Context, req Request, resp Response) error {
 	return tx.Commit(ctx)
 }
 
-// StoredSearch is a search as GET /v1/search/{queryId} returns it.
+// StoredSearch is a search as GET /v1/search/{queryId} returns it. The
+// session id stays server-side: query ids are visible to anyone who sees
+// a results page, and the session id is what unlocks export and deletion.
 type StoredSearch struct {
 	QueryID   string                `json:"query_id"`
-	SessionID string                `json:"session_id"`
+	SessionID string                `json:"-"`
 	Raw       string                `json:"raw_query"`
 	Text      string                `json:"query_text"`
 	Filters   Filters               `json:"filters"`
