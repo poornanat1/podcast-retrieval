@@ -43,7 +43,7 @@ trending list per day, default 25, 0 disables).
 > (gitignored). Pending feed refreshes will re-add the episodes whenever
 > the worker runs again. Restarting the stack starts
 > the worker: start only the services you need
-> (`docker compose up -d postgres mlflow minio`).
+> (`docker compose up -d postgres mlflow objstore`).
 
 ## Discovery
 

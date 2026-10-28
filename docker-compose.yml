@@ -31,33 +31,46 @@ services:
       timeout: 3s
       retries: 10
 
-  minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
-    command: server /data --console-address ":9001"
+  # S3-compatible object store for local work (RustFS; MinIO's community
+  # edition is unmaintained). Console on :9001.
+  objstore:
+    image: rustfs/rustfs:1.0.4
+    command: /data
     environment:
-      MINIO_ROOT_USER: podfind
-      MINIO_ROOT_PASSWORD: podfind-dev-secret
+      RUSTFS_ACCESS_KEY: podfind
+      RUSTFS_SECRET_KEY: podfind-dev-secret
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_OBS_LOGGER_LEVEL: error
     ports:
       - "9000:9000"
       - "9001:9001"
     volumes:
-      - minio-data:/data
+      - objstore-data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/health || wget -qO- http://localhost:9000/health"]
       interval: 5s
       timeout: 3s
       retries: 10
 
   # Creates the buckets the project expects, then exits.
-  minio-init:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+  objstore-init:
+    image: amazon/aws-cli:2.39.1
     depends_on:
-      minio:
+      objstore:
         condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: podfind
+      AWS_SECRET_ACCESS_KEY: podfind-dev-secret
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_EC2_METADATA_DISABLED: "true"
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:9000 podfind podfind-dev-secret &&
-      mc mb --ignore-existing local/datasets local/transcripts local/models local/mlflow-artifacts
+      for b in datasets transcripts models mlflow-artifacts recordings; do
+        aws --endpoint-url http://objstore:9000 s3api head-bucket --bucket $$b 2>/dev/null ||
+        aws --endpoint-url http://objstore:9000 s3api create-bucket --bucket $$b;
+      done
       "
 
   catalog-worker:
@@ -71,14 +84,14 @@ services:
       PARTICLE_API_KEY: ${PARTICLE_API_KEY:-}
       PODFIND_DAILY_TRENDING: ${PODFIND_DAILY_TRENDING:-25}
       PODFIND_WORKER_CONCURRENCY: ${PODFIND_WORKER_CONCURRENCY:-4}
-      OBJECT_STORE_ENDPOINT: minio:9000
+      OBJECT_STORE_ENDPOINT: objstore:9000
       OBJECT_STORE_ACCESS_KEY: podfind
       OBJECT_STORE_SECRET_KEY: podfind-dev-secret
       OBJECT_STORE_BUCKET: transcripts
     depends_on:
       postgres:
         condition: service_healthy
-      minio:
+      objstore:
         condition: service_healthy
     restart: unless-stopped
 
@@ -98,5 +111,5 @@ services:
 
 volumes:
   pgdata:
-  minio-data:
+  objstore-data:
   mlflow-data:

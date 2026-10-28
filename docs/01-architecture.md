@@ -14,12 +14,12 @@ flowchart TB
     REL["Relevance set<br/>data/relevance/"] --> EVAL
     EVAL --> MLF["MLflow"]
     TRAIN --> MLF
-    SNAP --> MINIO[("MinIO<br/>published datasets · raw transcripts")]
+    SNAP --> S3[("Object store (S3 API)<br/>published datasets · raw transcripts")]
     WEB["Web app"] -->|"text / voice"| API["Go API (cmd/api)"]
     API --> STT["Speech server (ml/speech)<br/>Whisper"]
     API --> MS["Model server (ml/serving)<br/>ONNX"]
     API --> PG
-    API -->|"kept recordings"| MINIO
+    API -->|"kept recordings"| S3
 ```
 
 ## Components
@@ -65,8 +65,11 @@ export, and the metrics harness. [06-relevance.md](06-relevance.md),
 [07-evaluation.md](07-evaluation.md)
 
 **MLflow.** Tracking server in Docker Compose; every evaluation and
-training run logs there. **MinIO** holds published dataset versions and
-raw transcript files.
+training run logs there. **The object store** (any S3 API: RustFS in
+compose, a Railway bucket in production) holds published dataset versions,
+raw transcript files, and retained voice recordings. MinIO was used until
+its community edition stopped being maintained in late 2025; the code
+depends on the S3 API only.
 
 **Serving.** The Go API (`cmd/api`, `internal/search`) runs query
 understanding, three concurrent retrieval legs against PostgreSQL, and

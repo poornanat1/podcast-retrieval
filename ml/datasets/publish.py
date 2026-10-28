@@ -9,47 +9,26 @@ the local compose stack.
 
 from __future__ import annotations
 
-import io
 import json
-import os
 from pathlib import Path
 from typing import Any
 
-from minio import Minio
-from minio.error import S3Error
+from ml.objstore import client_from_env
 
 _FILES = ("train.parquet", "validation.parquet", "test.parquet", "manifest.json")
 
 
-def _client() -> tuple[Minio, str]:
-    endpoint = os.environ.get("OBJECT_STORE_ENDPOINT", "localhost:9000")
-    bucket = os.environ.get("OBJECT_STORE_BUCKET_DATASETS", "datasets")
-    client = Minio(
-        endpoint,
-        access_key=os.environ.get("OBJECT_STORE_ACCESS_KEY", "podfind"),
-        secret_key=os.environ.get("OBJECT_STORE_SECRET_KEY", "podfind-dev-secret"),
-        secure=os.environ.get("OBJECT_STORE_USE_SSL", "") == "true",
-    )
-    return client, bucket
-
-
-def _remote_manifest(client: Minio, bucket: str, key: str) -> dict[str, Any] | None:
+def _remote_manifest(client, bucket: str, key: str) -> dict[str, Any] | None:
     try:
-        response = client.get_object(bucket, key)
-        try:
-            return json.load(response)
-        finally:
-            response.close()
-            response.release_conn()
-    except S3Error as exc:
-        if exc.code == "NoSuchKey":
-            return None
-        raise
+        response = client.get_object(Bucket=bucket, Key=key)
+    except client.exceptions.NoSuchKey:
+        return None
+    return json.load(response["Body"])
 
 
 def publish_dataset(dataset_dir: Path, manifest: dict[str, Any]) -> str:
     """Upload a built dataset. Returns its object-store location."""
-    client, bucket = _client()
+    client, bucket = client_from_env("OBJECT_STORE_BUCKET_DATASETS", "datasets")
     prefix = f"{manifest['name']}/{manifest['dataset_version']}"
     manifest_key = f"{prefix}/manifest.json"
 
@@ -66,10 +45,10 @@ def publish_dataset(dataset_dir: Path, manifest: dict[str, Any]) -> str:
         path = dataset_dir / name
         if name == "manifest.json":
             continue  # uploaded last, marking the version complete
-        client.fput_object(bucket, f"{prefix}/{name}", str(path),
-                           content_type="application/octet-stream")
+        client.upload_file(str(path), bucket, f"{prefix}/{name}",
+                           ExtraArgs={"ContentType": "application/octet-stream"})
 
     body = json.dumps(manifest, indent=2).encode()
-    client.put_object(bucket, manifest_key, io.BytesIO(body), len(body),
-                      content_type="application/json")
+    client.put_object(Bucket=bucket, Key=manifest_key, Body=body,
+                      ContentType="application/json")
     return f"{bucket}/{prefix}"

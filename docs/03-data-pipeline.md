@@ -11,7 +11,7 @@ flowchart LR
     NQ --> DS
     LQ --> DS
     NEG --> DS
-    DS -->|"--publish"| MINIO[("MinIO")]
+    DS -->|"--publish"| S3[("Object store")]
     DS --> TRAIN["make train"]
 ```
 
@@ -98,7 +98,7 @@ validation writes nothing.
 
 ## Publishing
 
-`--publish` uploads a built dataset to the MinIO `datasets` bucket under
+`--publish` uploads a built dataset to the object store's `datasets` bucket under
 its version; an existing version is never overwritten.
 
 ## Relevance data

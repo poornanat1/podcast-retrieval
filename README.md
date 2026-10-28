@@ -78,7 +78,7 @@ Requires Go 1.26+, [uv](https://docs.astral.sh/uv/), and Docker; on macOS,
 
 ```sh
 cp .env.example .env            # optional: Particle API key for discovery
-docker compose up -d postgres minio mlflow
+docker compose up -d postgres objstore mlflow
 make migrate
 make ci                         # lint, tests, build
 

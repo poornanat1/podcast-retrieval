@@ -6,7 +6,7 @@ through Docker Compose:
 | service | image / build | role |
 |---|---|---|
 | `postgres` | `pgvector/pgvector:pg17` | catalog, indexes, jobs, events |
-| `minio` + `minio-init` | `minio/minio` | published datasets, raw transcripts |
+| `objstore` + `objstore-init` | `rustfs/rustfs` | S3-compatible store: published datasets, raw transcripts, kept recordings |
 | `mlflow` | `ghcr.io/mlflow/mlflow` | tracking server on host port 5001 |
 | `catalog-worker` | built from the repo `Dockerfile` | ingestion (stopped during the corpus freeze) |
 
@@ -16,7 +16,7 @@ host: the model server (`make serve-models`, port 8081), the speech
 server (`make serve-speech`, port 8082), and the Go API (`make api`,
 port 8080). Their configuration, start order, and memory needs are in
 [14-serving.md](14-serving.md#operations) and [15-voice.md](15-voice.md).
-Voice recordings a user asks to keep go to MinIO when the API has the
+Voice recordings a user asks to keep go to the object store when the API has the
 `OBJECT_STORE_*` variables; without them retention is refused.
 
 `deploy/helm/` and `deploy/openshift/` are empty placeholders, and

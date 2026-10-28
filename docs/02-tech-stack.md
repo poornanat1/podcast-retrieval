@@ -7,13 +7,13 @@
 | ML | Python 3.11+, PyTorch, `transformers`, `sentence-transformers` | The models and tooling live here |
 | Data | pandas, PyArrow (Parquet), Pandera | Columnar, typed, validated dataset files |
 | Tracking | MLflow 3 | Runs, parameters, metric histories, artifacts |
-| Object store | MinIO (S3 API), `minio-go` | Published dataset versions and raw transcripts |
+| Object store | any S3 API: RustFS locally, a Railway bucket in production; AWS SDK for Go v2, boto3 | Published dataset versions, raw transcripts, retained voice recordings, serving bundles |
 | LLM | OpenAI API (`gpt-5.1`) | Relevance judging and training-query generation |
 | Tooling | `uv`, `ruff`, `pytest`, `go vet`, Docker Compose, GitHub Actions | |
 
 ## Go
 
-Dependencies are `github.com/jackc/pgx/v5` and `github.com/minio/minio-go/v7`;
+Dependencies are `github.com/jackc/pgx/v5` and the AWS SDK for Go v2 (`service/s3`);
 everything else is the standard library. The job queue uses
 `FOR UPDATE SKIP LOCKED` with leases, exponential backoff, and a
 dead-letter state; the outbox commits domain events with the state change
@@ -22,7 +22,7 @@ that caused them.
 ## Python
 
 `pyproject.toml` pins ranges; `uv.lock` pins exact versions. Runtime
-dependencies: `torch`, `mlflow`, `pandera`, `pyarrow`, `psycopg`, `minio`,
+dependencies: `torch`, `mlflow`, `pandera`, `pyarrow`, `psycopg`, `boto3`,
 `openai`, `sentence-transformers`, `pgvector`. Dev: `pytest`, `ruff`.
 
 Models run on Apple Metal (`mps`), CUDA, or CPU; the training loop and
@@ -33,7 +33,7 @@ embedding jobs pick whichever is available.
 | Service | Port | Notes |
 |---|---|---|
 | `postgres` (`pgvector/pgvector:pg17`) | 5432 | user/db `podfind` |
-| `minio` | 9000 / 9001 | buckets created by `minio-init` |
+| `objstore` (`rustfs/rustfs`) | 9000 / 9001 | S3 API and console; buckets created by `objstore-init` |
 | `mlflow` | 5001 | port 5000 is taken by macOS AirPlay |
 | `catalog-worker` | | reads `PARTICLE_API_KEY` from `.env` |
 

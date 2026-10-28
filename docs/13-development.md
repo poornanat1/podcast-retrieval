@@ -10,7 +10,7 @@ importing `ml.ranking`.
 
 ```sh
 cp .env.example .env                      # PARTICLE_API_KEY for discovery; OPENAI_API_KEY for judging and query generation
-docker compose up -d postgres minio mlflow
+docker compose up -d postgres objstore mlflow
 make migrate
 make ci                                   # lint + tests + build
 ```
