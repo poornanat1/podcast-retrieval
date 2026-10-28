@@ -34,8 +34,12 @@ func (e *StatusError) Permanent() bool {
 	return e.Code >= 400 && e.Code < 500 && e.Code != http.StatusTooManyRequests
 }
 
-// IsPermanent reports whether err represents an unretryable fetch failure.
+// IsPermanent reports whether err represents an unretryable fetch failure:
+// a permanent HTTP status, or a URL the crawler refuses on principle.
 func IsPermanent(err error) bool {
+	if errors.Is(err, ErrUnsafeURL) {
+		return true
+	}
 	var se *StatusError
 	return errors.As(err, &se) && se.Permanent()
 }
@@ -49,10 +53,15 @@ type Result struct {
 }
 
 // Fetcher retrieves feeds with conditional requests so unchanged feeds cost
-// a 304 instead of a full transfer.
+// a 304 instead of a full transfer. By default it refuses URLs that are not
+// public http(s) addresses (see ErrUnsafeURL), both up front and on every
+// redirect and DNS resolution.
 type Fetcher struct {
-	Client    *http.Client // default: 30s timeout
+	Client    *http.Client // default: a 30 s client restricted to public addresses
 	UserAgent string       // default: DefaultUserAgent
+	// AllowPrivate disables the public-address restriction; for tests
+	// against loopback servers only.
+	AllowPrivate bool
 }
 
 // Fetch requests url, sending If-None-Match / If-Modified-Since when prior
@@ -60,7 +69,16 @@ type Fetcher struct {
 func (f *Fetcher) Fetch(ctx context.Context, url, etag, lastModified string) (*Result, error) {
 	client := f.Client
 	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
+		if f.AllowPrivate {
+			client = &http.Client{Timeout: 30 * time.Second}
+		} else {
+			client = defaultSafeClient()
+		}
+	}
+	if !f.AllowPrivate {
+		if err := checkURL(url); err != nil {
+			return nil, err
+		}
 	}
 	ua := f.UserAgent
 	if ua == "" {

@@ -2,9 +2,11 @@ package rss
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestFetchConditionalRequests(t *testing.T) {
@@ -23,7 +25,7 @@ func TestFetchConditionalRequests(t *testing.T) {
 	}))
 	defer server.Close()
 
-	f := &Fetcher{}
+	f := &Fetcher{AllowPrivate: true}
 	ctx := context.Background()
 
 	first, err := f.Fetch(ctx, server.URL, "", "")
@@ -59,7 +61,7 @@ func TestFetchStatusClassification(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(status)
 		}))
-		f := &Fetcher{}
+		f := &Fetcher{AllowPrivate: true}
 		_, err := f.Fetch(context.Background(), server.URL, "", "")
 		server.Close()
 		if err == nil {
@@ -68,6 +70,58 @@ func TestFetchStatusClassification(t *testing.T) {
 		}
 		if IsPermanent(err) != wantPermanent {
 			t.Errorf("status %d: IsPermanent = %v, want %v", status, IsPermanent(err), wantPermanent)
+		}
+	}
+}
+
+func TestFetchRefusesUnsafeURLs(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("<rss/>"))
+	}))
+	defer server.Close()
+	redirecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, server.URL, http.StatusFound)
+	}))
+	defer redirecting.Close()
+
+	f := &Fetcher{} // production defaults
+	for _, u := range []string{
+		server.URL,                   // loopback
+		"http://10.0.0.1/feed.xml",   // private
+		"http://169.254.169.254/",    // link-local (cloud metadata)
+		"http://localhost:8080/feed", // loopback by name
+		"ftp://example.com/feed.xml", // not http(s)
+		"file:///etc/passwd",
+	} {
+		_, err := f.Fetch(context.Background(), u, "", "")
+		if err == nil {
+			t.Errorf("%s: fetched", u)
+			continue
+		}
+		if !IsPermanent(err) {
+			t.Errorf("%s: not permanent: %v", u, err)
+		}
+	}
+
+	// A test-only client that can reach loopback still refuses to follow a
+	// redirect to a private address.
+	g := &Fetcher{Client: NewSafeClient(5 * time.Second), AllowPrivate: true}
+	g.Client.Transport = http.DefaultTransport // reach the loopback redirector
+	if _, err := g.Fetch(context.Background(), redirecting.URL, "", ""); err == nil {
+		t.Error("redirect to a loopback address was followed")
+	}
+}
+
+func TestPublicIP(t *testing.T) {
+	cases := map[string]bool{
+		"8.8.8.8": true, "93.184.216.34": true, "2606:4700::1111": true,
+		"127.0.0.1": false, "10.1.2.3": false, "172.16.5.5": false, "192.168.1.1": false,
+		"169.254.169.254": false, "100.64.0.1": false, "0.0.0.0": false, "224.0.0.1": false,
+		"255.255.255.255": false, "::1": false, "fe80::1": false, "fc00::1": false, "2001:db8::1": false,
+	}
+	for ip, want := range cases {
+		if got := publicIP(net.ParseIP(ip)); got != want {
+			t.Errorf("publicIP(%s) = %v, want %v", ip, got, want)
 		}
 	}
 }

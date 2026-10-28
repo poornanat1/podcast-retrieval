@@ -25,7 +25,7 @@ func startWorker(t *testing.T, pool *pgxpool.Pool) (*catalog.Worker, *jobs.Queue
 	t.Cleanup(cancel)
 
 	queue := jobs.New(pool, jobs.WithBackoff(0, 0))
-	worker := &catalog.Worker{Pool: pool, Queue: queue, Fetcher: &rss.Fetcher{}}
+	worker := &catalog.Worker{Pool: pool, Queue: queue, Fetcher: &rss.Fetcher{AllowPrivate: true}}
 	runner := &jobs.Runner{
 		Queue:        queue,
 		Handlers:     worker.Handlers(),
@@ -155,7 +155,7 @@ func TestRecurringDiscoveryIngestsAndReenqueues(t *testing.T) {
 	worker := &catalog.Worker{
 		Pool:    pool,
 		Queue:   queue,
-		Fetcher: &rss.Fetcher{},
+		Fetcher: &rss.Fetcher{AllowPrivate: true},
 		Discovery: &particle.Client{
 			APIKey: "test-key", BaseURL: providerServer.URL,
 			MinInterval: time.Millisecond,
@@ -257,4 +257,57 @@ func TestMalformedFeedDeadLettersWithoutCrashing(t *testing.T) {
 	waitFor(t, runCtx, "good feed to ingest", func() bool {
 		return countEpisodes(t, pool, goodID) == 3
 	})
+}
+
+// A feed that fails transiently (here, 503) is not polled again until its
+// backoff has elapsed, so the scheduler cannot re-enqueue it every cycle.
+func TestTransientFeedFailureBacksOff(t *testing.T) {
+	pool := pgtest.Pool(t, "catalog_worker")
+	ctx := context.Background()
+
+	flaky := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer flaky.Close()
+	id := insertPodcast(t, pool, flaky.URL)
+	_, queue, runCtx := startWorker(t, pool)
+
+	if _, err := queue.Enqueue(ctx, catalog.JobFeedRefresh,
+		catalog.FeedRefreshPayload{PodcastID: id}, jobs.WithMaxAttempts(2)); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	var status string
+	waitFor(t, runCtx, "flaky feed to exhaust its attempts", func() bool {
+		err := pool.QueryRow(ctx, `SELECT status FROM jobs WHERE job_type = $1 AND payload->>'podcast_id' = $2`,
+			catalog.JobFeedRefresh, strconv.FormatInt(id, 10)).Scan(&status)
+		return err == nil && status == "dead"
+	})
+
+	var wait time.Duration
+	if err := pool.QueryRow(ctx, "SELECT next_fetch_at - now() FROM podcasts WHERE id = $1", id).Scan(&wait); err != nil {
+		t.Fatalf("next_fetch_at: %v", err)
+	}
+	// Two failed attempts: the second pushes the poll out by twice the minimum.
+	if want := catalog.TransientBackoff(2); wait < want-time.Minute || wait > want {
+		t.Errorf("next poll in %v, want about %v", wait, want)
+	}
+	// Not due: the scheduler would not pick it up.
+	var due bool
+	if err := pool.QueryRow(ctx, "SELECT next_fetch_at <= now() FROM podcasts WHERE id = $1", id).Scan(&due); err != nil {
+		t.Fatalf("due: %v", err)
+	}
+	if due {
+		t.Error("feed is still due after failing")
+	}
+}
+
+func TestTransientBackoff(t *testing.T) {
+	for attempts, want := range map[int]time.Duration{
+		0: catalog.MinFetchInterval, 1: catalog.MinFetchInterval, 2: 2 * catalog.MinFetchInterval,
+		5: 16 * catalog.MinFetchInterval, 20: catalog.MaxFetchInterval,
+	} {
+		if got := catalog.TransientBackoff(attempts); got != want {
+			t.Errorf("TransientBackoff(%d) = %v, want %v", attempts, got, want)
+		}
+	}
 }

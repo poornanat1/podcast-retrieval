@@ -69,7 +69,7 @@ func TestTranscriptPipelineEndToEnd(t *testing.T) {
 	runCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
 	queue := jobs.New(pool, jobs.WithBackoff(0, 0))
-	worker := &catalog.Worker{Pool: pool, Queue: queue, Fetcher: &rss.Fetcher{}}
+	worker := &catalog.Worker{Pool: pool, Queue: queue, Fetcher: &rss.Fetcher{AllowPrivate: true}}
 	runner := &jobs.Runner{
 		Queue:        queue,
 		Handlers:     worker.Handlers(),

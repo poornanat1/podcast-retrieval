@@ -38,3 +38,20 @@ func NextFetchInterval(newestPublished *time.Time, now time.Time) time.Duration 
 	}
 	return interval
 }
+
+// TransientBackoff is how far a feed's next poll moves out after its n-th
+// consecutive failed fetch attempt: the minimum interval, doubling each
+// time, capped at the maximum.
+func TransientBackoff(attempts int) time.Duration {
+	if attempts < 1 {
+		attempts = 1
+	}
+	d := MinFetchInterval
+	for i := 1; i < attempts && d < MaxFetchInterval; i++ {
+		d *= 2
+	}
+	if d > MaxFetchInterval {
+		d = MaxFetchInterval
+	}
+	return d
+}

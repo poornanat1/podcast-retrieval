@@ -105,7 +105,7 @@ func (w *Worker) handleFeedRefresh(ctx context.Context, job *jobs.Job) error {
 		if rss.IsPermanent(err) {
 			return w.parkFeed(ctx, p.PodcastID, err)
 		}
-		return err
+		return w.deferFeed(ctx, p.PodcastID, job.Attempts, err)
 	}
 
 	if res.NotModified {
@@ -167,6 +167,21 @@ func (w *Worker) parkFeed(ctx context.Context, podcastID int64, cause error) err
 		return fmt.Errorf("park feed %d: %w", podcastID, err)
 	}
 	return jobs.Permanent(cause)
+}
+
+// deferFeed pushes a transiently failing feed's next poll out by a backoff
+// that doubles with each failed attempt, from the minimum interval to the
+// maximum. The job itself is still retried by the queue; this keeps the
+// scheduler from enqueueing a fresh refresh for the same feed every cycle
+// while it is unreachable, which would otherwise crowd out healthy feeds.
+func (w *Worker) deferFeed(ctx context.Context, podcastID int64, attempts int, cause error) error {
+	if _, err := w.Pool.Exec(ctx, `
+		UPDATE podcasts SET next_fetch_at = now() + $2, updated_at = now()
+		WHERE id = $1`,
+		podcastID, TransientBackoff(attempts)); err != nil {
+		return fmt.Errorf("defer feed %d: %w", podcastID, err)
+	}
+	return cause
 }
 
 // recordFetch stores conditional-request validators and schedules the next
