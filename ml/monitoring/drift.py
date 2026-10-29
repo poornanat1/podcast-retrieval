@@ -17,7 +17,9 @@ window. It compares them with the baseline and reports findings:
 - the served bundle
 
 Exit code 2 and a webhook post (Slack-compatible ``{"text": ...}``) when
-anything drifted; 0 otherwise; 1 on error. ``--write-baseline`` records the
+anything drifted (0 with ``--exit-zero``, which Railway's cron needs: a
+non-zero exit is a crash there and a crashed cron is not rescheduled);
+0 otherwise; 1 on error. ``--write-baseline`` records the
 window as the new baseline instead. Runs as a cron job on Railway
 (deploy: the ``drift`` service) and locally against the compose stack.
 """
@@ -42,7 +44,7 @@ SCORE_BINS = [-4 + 0.5 * i for i in range(29)]  # -4 .. 10
 STAGES = ("total_ms", "encode_ms", "retrieve_ms", "evidence_ms", "rerank_ms")
 
 THRESHOLDS = {
-    "min_searches": 20,
+    "min_searches": 100,  # a handful of real searches says nothing about distributions
     "zero_result_rate_delta": 0.15,  # absolute increase over the baseline
     "vector_leg_failure_rate": 0.10,  # e5 / two_tower not ok
     "lexical_timeout_rate_delta": 0.30,  # lexical times out routinely; watch the change
@@ -285,14 +287,15 @@ def load_features(url: str, hours: float) -> dict[str, dict[str, float]]:
     def over(metric: str) -> dict[str, float]:
         return prometheus_query(url, f"sum by (feature) (increase({metric}[{window}]))")
 
-    sums = over("podfind_model_feature_sum")
-    counts = over("podfind_model_feature_count")
+    pos = over("podfind_model_feature_positive_sum")
+    neg = over("podfind_model_feature_negative_sum")
+    counts = over("podfind_model_feature_values")
     nans = over("podfind_model_feature_nan_total")
     out = {}
     for name, count in counts.items():
         if count <= 0:
             continue
-        out[name] = {"mean": sums.get(name, 0.0) / count, "count": count,
+        out[name] = {"mean": (pos.get(name, 0.0) - neg.get(name, 0.0)) / count, "count": count,
                      "nan": nans.get(name, 0.0)}
     return out
 
@@ -322,6 +325,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--webhook", default=os.environ.get("ALERT_WEBHOOK_URL"))
     parser.add_argument("--json-out")
     parser.add_argument("--write-baseline", action="store_true")
+    parser.add_argument("--exit-zero", action="store_true",
+                        help="report drift in the output and webhook but exit 0 (for schedulers "
+                             "that treat a non-zero exit as a crash and stop rescheduling)")
     args = parser.parse_args(argv)
 
     since = datetime.fromisoformat(args.since) if args.since else None
@@ -355,6 +361,9 @@ def main(argv: list[str] | None = None) -> int:
     drifted = any(f.severity in ("critical", "warning") for f in findings)
     if drifted and args.webhook and not args.webhook.endswith("/unconfigured"):
         notify(args.webhook, report)
+    if drifted and args.exit_zero:
+        print("DRIFT (exit 0 requested)")
+        return 0
     return 2 if drifted else 0
 
 

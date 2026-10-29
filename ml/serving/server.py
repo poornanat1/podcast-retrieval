@@ -34,15 +34,15 @@ from typing import Any
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Response
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, Summary, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from pydantic import BaseModel, Field
 
 from ml.ranking.features import FEATURES
 from ml.serving.runtime import ServingBundle, resolve_bundle
 
 # Prometheus metrics at /metrics: what the drift check and dashboards read.
-# Feature values are summaries (sum and count per feature), enough to
-# watch each feature's mean drift against the training distribution.
+# Feature values are sums and counts per feature, enough to watch each
+# feature's mean drift against the training distribution.
 _SECONDS = (.001, .0025, .005, .01, .025, .05, .1, .25, .5, 1, 2.5)
 ENCODE_SECONDS = Histogram("podfind_model_encode_seconds", "Query encoding time.",
                            buckets=_SECONDS)
@@ -54,7 +54,14 @@ RERANK_CANDIDATES = Histogram("podfind_model_rerank_candidates", "Candidates per
                               buckets=(0, 10, 50, 100, 200, 400, 800))
 SCORE = Histogram("podfind_model_score", "Ranker scores.",
                   buckets=[round(-4 + 0.5 * i, 1) for i in range(29)])
-FEATURE = Summary("podfind_model_feature", "Feature values seen at serving.", ["feature"])
+# A feature's running sum must be monotonic for Prometheus to read it as a
+# counter, and several features are negative (the similarity gaps), so the
+# positive and negative parts are summed separately: mean = (pos - neg) / count.
+FEATURE_POS = Counter("podfind_model_feature_positive_sum", "Sum of the positive feature values.",
+                      ["feature"])
+FEATURE_NEG = Counter("podfind_model_feature_negative_sum",
+                      "Sum of the absolute negative feature values.", ["feature"])
+FEATURE_COUNT = Counter("podfind_model_feature_values", "Feature values observed.", ["feature"])
 FEATURE_NAN = Counter("podfind_model_feature_nan_total", "Non-finite feature values.",
                       ["feature"])
 REQUEST_ERRORS = Counter("podfind_model_request_errors_total", "Rejected requests.",
@@ -140,8 +147,11 @@ def observe_rerank(scores: np.ndarray, features: np.ndarray) -> None:
         bad = int((~finite[:, j]).sum())
         if bad:
             FEATURE_NAN.labels(name).inc(bad)
-        for value in column[finite[:, j]].tolist():
-            FEATURE.labels(name).observe(value)
+        good = column[finite[:, j]]
+        if len(good):
+            FEATURE_POS.labels(name).inc(float(good[good > 0].sum()))
+            FEATURE_NEG.labels(name).inc(float(-good[good < 0].sum()))
+            FEATURE_COUNT.labels(name).inc(len(good))
 
 
 def main(argv: list[str] | None = None) -> int:

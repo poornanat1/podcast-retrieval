@@ -166,12 +166,13 @@ export default defineRailway((ctx) => {
   });
 
   // The drift check: the model-server image with a different command, run
-  // every 30 minutes. It exits 2 (a failed run in Railway's view) when the
-  // served distributions drift from the checked-in baseline.
+  // every 30 minutes. Findings go to the log (and the webhook when set);
+  // it exits 0 either way because Railway treats a non-zero exit as a
+  // crash and stops scheduling a crashed cron.
   const drift = service("drift", {
     source,
     build: dockerfile("ml/serving/Dockerfile"),
-    start: "python -m ml.monitoring.drift --hours 6",
+    start: "python -m ml.monitoring.drift --hours 6 --exit-zero",
     deploy: { cronSchedule: "*/30 * * * *", restartPolicyType: "NEVER" },
     env: {
       DATABASE_URL: databaseUrl,

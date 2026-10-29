@@ -38,13 +38,13 @@ def test_psi_is_zero_for_identical_and_grows_with_shift():
 
 def test_compare_finds_nothing_when_stable():
     base = drift.summarize(rows(200))
-    cur = drift.summarize(rows(100))
+    cur = drift.summarize(rows(120))
     assert [f.name for f in drift.compare(base, cur)] == []
 
 
 def test_compare_flags_a_dead_leg_and_the_source_mix():
     base = drift.summarize(rows(200))
-    cur = drift.summarize(rows(100, two_tower_error=100, sources=("lexical", "e5")))
+    cur = drift.summarize(rows(120, two_tower_error=120, sources=("lexical", "e5")))
     names = {f.name: f for f in drift.compare(base, cur)}
     assert names["leg_two_tower"].severity == "critical"
     assert "source_mix_psi" in names
@@ -52,22 +52,40 @@ def test_compare_flags_a_dead_leg_and_the_source_mix():
 
 def test_compare_flags_zero_results_latency_rrf_and_scores():
     base = drift.summarize(rows(200))
-    cur = drift.summarize(rows(100, zero=40, rrf=10, score=-2.0, total_ms=1500))
+    cur = drift.summarize(rows(120, zero=48, rrf=12, score=-2.0, total_ms=1500))
     names = {f.name for f in drift.compare(base, cur)}
     assert {"zero_results", "rrf_fallback", "latency_total_ms", "top_score_psi"} <= names
 
 
 def test_compare_needs_a_minimum_sample():
     base = drift.summarize(rows(200))
-    findings = drift.compare(base, drift.summarize(rows(5, zero=5)))
+    findings = drift.compare(base, drift.summarize(rows(60, zero=60)))
     assert [f.severity for f in findings] == ["info"]
+
+
+def test_prometheus_feature_means_combine_signed_sums(monkeypatch):
+    series = {"podfind_model_feature_positive_sum": {"gap": 10.0, "sim": 90.0},
+              "podfind_model_feature_negative_sum": {"gap": 310.0},
+              "podfind_model_feature_values": {"gap": 100.0, "sim": 100.0},
+              "podfind_model_feature_nan_total": {"sim": 1.0}}
+
+    def fake_query(url, expr):
+        for metric, values in series.items():
+            if metric in expr:
+                return values
+        return {}
+
+    monkeypatch.setattr(drift, "prometheus_query", fake_query)
+    feats = drift.load_features("http://prom", 6)
+    assert feats["gap"] == {"mean": -3.0, "count": 100.0, "nan": 0.0}
+    assert feats["sim"] == {"mean": 0.9, "count": 100.0, "nan": 1.0}
 
 
 def test_compare_features_and_bundle_change():
     base = drift.summarize(rows(200))
     base["features"] = {"e5_sim": {"mean": 0.8, "count": 1000, "nan": 0},
                         "log_age_days": {"mean": 5.0, "count": 1000, "nan": 0}}
-    cur = drift.summarize(rows(100, bundle="b2"))
+    cur = drift.summarize(rows(120, bundle="b2"))
     cur["features"] = {"e5_sim": {"mean": 0.3, "count": 500, "nan": 2},
                        "log_age_days": {"mean": 5.1, "count": 500, "nan": 0},
                        "new_feature": {"mean": 1, "count": 500, "nan": 0}}

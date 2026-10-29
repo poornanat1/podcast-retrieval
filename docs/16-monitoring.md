@@ -31,10 +31,14 @@ them every 15 s and Grafana shows the `PodFind` dashboard
 towers produce unit vectors; anything else means the served tower or
 tokenizer differs from the one that built the index),
 `podfind_model_rerank_candidates`, `podfind_model_score`, and
-`podfind_model_feature{feature}` as a sum and count per feature so the
-mean of every ranker feature at serving time can be compared with its
-training distribution, with `podfind_model_feature_nan_total{feature}`
-for non-finite values.
+`podfind_model_feature_positive_sum{feature}`,
+`podfind_model_feature_negative_sum{feature}` and
+`podfind_model_feature_values{feature}`, the signed parts of each ranker
+feature's running sum and its count, so the mean of every feature at
+serving time can be compared with its training distribution (both parts
+are monotonic, which a plain sum of a negative-valued feature is not, and
+Prometheus would read as counter resets), with
+`podfind_model_feature_nan_total{feature}` for non-finite values.
 
 **Speech server** (`ml/speech/server.py`): `podfind_speech_transcribe_seconds`,
 `podfind_speech_audio_seconds`, `podfind_speech_confidence`,
@@ -84,7 +88,11 @@ and compares them with `experiments/monitoring/baseline.json`:
 - a change of served bundle, reported for information.
 
 It exits 2 and posts the findings to the webhook when anything drifted,
-0 otherwise, and needs at least 20 searches in the window to judge. On
+0 otherwise, and needs at least 100 searches in the window to judge: a
+handful of real searches against a baseline recorded from the relevance
+queries flags the difference between people and a test set, not drift.
+The baseline should be re-recorded from production traffic once there is
+enough of it. On
 Railway it runs every 30 minutes as the `drift` cron service over the last
 6 hours; locally, `make drift` (and `make drift-baseline` to record a new
 baseline after a model change). The baseline is checked in and re-recorded
