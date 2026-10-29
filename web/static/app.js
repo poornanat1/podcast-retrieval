@@ -158,9 +158,17 @@ function renderResults(resp) {
   });
   markPlaying();
 
-  const degraded = Object.entries(resp.legs || {}).filter(([, v]) => v.status !== "ok" && v.status !== "skipped");
+  const legs = resp.legs || {};
+  const degraded = Object.entries(legs).filter(([, v]) => v.status !== "ok" && v.status !== "skipped");
   const count = resp.results.length;
-  setStatus(`${count} ${count === 1 ? "result" : "results"}${degraded.length ? ` · ${degraded.map(([k, v]) => `${k} ${v.status}`).join(", ")}` : ""}`, degraded.length > 0);
+  const st = $("status");
+  st.replaceChildren(`${count} ${count === 1 ? "result" : "results"}`);
+  if (degraded.length) {
+    // Say what it means for the user, not which leg did what.
+    const vector = degraded.some(([k]) => k !== "lexical");
+    st.append(el("span", { class: "note" }, vector ? "some results may be missing: a search source was slow" : "exact-phrase matches may be missing: the text index was slow"));
+  }
+  $("status").title = degraded.map(([k, v]) => `${k}: ${v.status}`).join(", ");
   $("versions").textContent = `${Math.round(resp.timings_ms.total_ms)} ms · bundle ${resp.versions.bundle_id} · ${resp.versions.ordering}`;
 
   if (count) {
@@ -231,12 +239,27 @@ $("q").addEventListener("input", () => {
 
 // --- search --------------------------------------------------------------------------------
 
+const MAX_QUERY = 400; // characters; the API refuses more than 1,000 bytes
+
+function friendly(message) {
+  if (/longer than/.test(message)) return `That is too long to search; keep it under ${MAX_QUERY} characters.`;
+  if (/session_id/.test(message)) return "Your browser blocked the session id the search needs; allow storage for this site.";
+  if (/Failed to fetch|NetworkError|Load failed/.test(message)) return "Could not reach PodFind. Check your connection and try again.";
+  return message.replace(/^bad request: ?/, "");
+}
+
+let inFlight = false;
 async function search() {
-  const query = $("q").value.trim();
+  const query = $("q").value.trim().slice(0, MAX_QUERY);
   if (!query) { if (!recorder.active) setStatus("Type something, or tap the microphone."); return; }
+  if (inFlight) return; // a second tap while searching is not a second search
+  inFlight = true;
+  $("search").classList.add("busy");
   skeletons();
   setStatus("Searching");
   $("transcript").hidden = true;
+  $("q").blur(); // dismisses the phone keyboard so the results show
+  if (window.innerWidth < 720) $("status").scrollIntoView({ behavior: "smooth", block: "start" });
   const body = { query, session_id: sessionId(), limit: 20, filters: filters() };
   // A transcript corrected before searching stays linked to its voice search.
   if (state.voice && query !== state.voice.text) body.input = { mode: "voice_edited", parent_query_id: state.voice.queryId };
@@ -247,9 +270,25 @@ async function search() {
     if (url.href !== location.href) history.pushState({}, "", url);
   } catch (e) {
     $("results").replaceChildren();
-    setStatus(`Search failed: ${e.message}`, true);
+    $("empty").hidden = true;
+    setStatus(`Search failed: ${friendly(e.message)}`, true);
+  } finally {
+    inFlight = false;
+    $("search").classList.remove("busy");
   }
 }
+
+// Length counter from 300 characters on.
+$("q").addEventListener("input", () => {
+  const n = $("q").value.length, c = $("counter");
+  c.textContent = n >= 300 ? `${n} / ${MAX_QUERY}` : "";
+  c.classList.toggle("near", n >= MAX_QUERY - 20);
+});
+// Choosing a suggested name runs the search; typing does not.
+$("q").addEventListener("change", () => {
+  const v = $("q").value.trim();
+  if (v && [...$("suggest").options].some((o) => o.value === v)) search();
+});
 
 $("search").addEventListener("submit", (event) => { event.preventDefault(); search(); });
 for (const id of ["language", "duration", "published", "noexplicit"]) {
