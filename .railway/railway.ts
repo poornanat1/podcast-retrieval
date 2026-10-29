@@ -32,6 +32,7 @@ import {
 
 const REPO = "poornanat1/podcast-retrieval";
 const BUNDLE_ID = "42df3779d7cf"; // the promoted serving bundle (data/serving/ACTIVE)
+const REGION = "us-east4-eqdc4a"; // where the volumes live; Railway assigned it on first apply
 
 export default defineRailway((ctx) => {
   const source = github(REPO, { branch: "main" });
@@ -47,10 +48,12 @@ export default defineRailway((ctx) => {
 
   // --- storage ------------------------------------------------------------
 
-  const models = bucket("models", { region: "iad" }); // serving bundles
-  const recordings = bucket("recordings", { region: "iad" }); // consented voice recordings
+  // Buckets keep the names Railway generated when they were created with
+  // `railway bucket create` (the file cannot rename them).
+  const models = bucket("neat-vase-vkFf", { region: "iad" }); // serving bundles
+  const recordings = bucket("stackable-toolchest-Aq6L", { region: "iad" }); // consented voice recordings
 
-  const pgData = volume("postgres-data", { sizeMB: 61440 }); // served catalog ≈ 20 GB + headroom
+  const pgData = volume("postgres-data", { sizeMB: 61440, region: REGION }); // served catalog ≈ 20 GB + headroom
 
   // pgvector on our own image: the served hot set (two HNSW indexes and
   // their rows) is about 6 GB, so the buffer cache must hold it.
@@ -74,7 +77,7 @@ export default defineRailway((ctx) => {
 
   // --- inference ------------------------------------------------------------
 
-  const bundleCache = volume("bundle-cache", { sizeMB: 5120 });
+  const bundleCache = volume("bundle-cache", { sizeMB: 5120, region: REGION });
   const modelServer = service("models", {
     source,
     build: dockerfile("ml/serving/Dockerfile"),
@@ -89,7 +92,7 @@ export default defineRailway((ctx) => {
     volumeMounts: { "/data": bundleCache },
   });
 
-  const speechCache = volume("speech-models", { sizeMB: 5120 });
+  const speechCache = volume("speech-models", { sizeMB: 5120, region: REGION });
   const speechServer = service("speech", {
     source,
     build: dockerfile("ml/speech/Dockerfile"),
@@ -113,7 +116,7 @@ export default defineRailway((ctx) => {
     build: dockerfile("Dockerfile"),
     healthcheck: "/healthz",
     healthcheckTimeout: 120,
-    replicas: ctx.environment === "production" ? 2 : 1,
+    replicas: { [REGION]: ctx.environment === "production" ? 2 : 1 },
     env: {
       PODFIND_CMD: "api",
       PORT: "8080",
@@ -129,7 +132,7 @@ export default defineRailway((ctx) => {
 
   // --- monitoring -----------------------------------------------------------
 
-  const promData = volume("prometheus-data", { sizeMB: 5120 });
+  const promData = volume("prometheus-data", { sizeMB: 5120, region: REGION });
   const prometheus = service("prometheus", {
     source,
     build: dockerfile("deploy/monitoring/prometheus/Dockerfile"),
@@ -140,7 +143,7 @@ export default defineRailway((ctx) => {
     volumeMounts: { "/prometheus": promData },
   });
 
-  const grafanaData = volume("grafana-data", { sizeMB: 1024 });
+  const grafanaData = volume("grafana-data", { sizeMB: 1024, region: REGION });
   const grafana = service("grafana", {
     source,
     build: dockerfile("deploy/monitoring/grafana/Dockerfile"),
