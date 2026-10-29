@@ -31,9 +31,9 @@ them every 15 s and Grafana shows the `PodFind` dashboard
 towers produce unit vectors; anything else means the served tower or
 tokenizer differs from the one that built the index),
 `podfind_model_rerank_candidates`, `podfind_model_score`, and
-`podfind_model_feature_positive_sum{feature}`,
-`podfind_model_feature_negative_sum{feature}` and
-`podfind_model_feature_values{feature}`, the signed parts of each ranker
+`podfind_model_feature_positive_sum_total{feature}`,
+`podfind_model_feature_negative_sum_total{feature}` and
+`podfind_model_feature_values_total{feature}`, the signed parts of each ranker
 feature's running sum and its count, so the mean of every feature at
 serving time can be compared with its training distribution (both parts
 are monotonic, which a plain sum of a negative-valued feature is not, and

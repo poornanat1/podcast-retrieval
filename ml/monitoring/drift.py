@@ -287,9 +287,9 @@ def load_features(url: str, hours: float) -> dict[str, dict[str, float]]:
     def over(metric: str) -> dict[str, float]:
         return prometheus_query(url, f"sum by (feature) (increase({metric}[{window}]))")
 
-    pos = over("podfind_model_feature_positive_sum")
-    neg = over("podfind_model_feature_negative_sum")
-    counts = over("podfind_model_feature_values")
+    pos = over("podfind_model_feature_positive_sum_total")
+    neg = over("podfind_model_feature_negative_sum_total")
+    counts = over("podfind_model_feature_values_total")
     nans = over("podfind_model_feature_nan_total")
     out = {}
     for name, count in counts.items():

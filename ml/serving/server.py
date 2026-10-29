@@ -57,11 +57,12 @@ SCORE = Histogram("podfind_model_score", "Ranker scores.",
 # A feature's running sum must be monotonic for Prometheus to read it as a
 # counter, and several features are negative (the similarity gaps), so the
 # positive and negative parts are summed separately: mean = (pos - neg) / count.
-FEATURE_POS = Counter("podfind_model_feature_positive_sum", "Sum of the positive feature values.",
-                      ["feature"])
-FEATURE_NEG = Counter("podfind_model_feature_negative_sum",
+FEATURE_POS = Counter("podfind_model_feature_positive_sum_total",
+                      "Sum of the positive feature values.", ["feature"])
+FEATURE_NEG = Counter("podfind_model_feature_negative_sum_total",
                       "Sum of the absolute negative feature values.", ["feature"])
-FEATURE_COUNT = Counter("podfind_model_feature_values", "Feature values observed.", ["feature"])
+FEATURE_COUNT = Counter("podfind_model_feature_values_total", "Feature values observed.",
+                        ["feature"])
 FEATURE_NAN = Counter("podfind_model_feature_nan_total", "Non-finite feature values.",
                       ["feature"])
 REQUEST_ERRORS = Counter("podfind_model_request_errors_total", "Rejected requests.",

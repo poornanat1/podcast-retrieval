@@ -339,7 +339,7 @@
    "targets": [
     {
      "refId": "A",
-     "expr": "(sum by (feature) (rate(podfind_model_feature_positive_sum[$__rate_interval])) - sum by (feature) (rate(podfind_model_feature_negative_sum[$__rate_interval]))) / clamp_min(sum by (feature) (rate(podfind_model_feature_values[$__rate_interval])), 1e-9)",
+     "expr": "(sum by (feature) (rate(podfind_model_feature_positive_sum_total[$__rate_interval])) - sum by (feature) (rate(podfind_model_feature_negative_sum_total[$__rate_interval]))) / clamp_min(sum by (feature) (rate(podfind_model_feature_values_total[$__rate_interval])), 1e-9)",
      "legendFormat": "{{feature}}"
     }
    ],

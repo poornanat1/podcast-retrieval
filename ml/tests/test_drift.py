@@ -64,9 +64,9 @@ def test_compare_needs_a_minimum_sample():
 
 
 def test_prometheus_feature_means_combine_signed_sums(monkeypatch):
-    series = {"podfind_model_feature_positive_sum": {"gap": 10.0, "sim": 90.0},
-              "podfind_model_feature_negative_sum": {"gap": 310.0},
-              "podfind_model_feature_values": {"gap": 100.0, "sim": 100.0},
+    series = {"podfind_model_feature_positive_sum_total": {"gap": 10.0, "sim": 90.0},
+              "podfind_model_feature_negative_sum_total": {"gap": 310.0},
+              "podfind_model_feature_values_total": {"gap": 100.0, "sim": 100.0},
               "podfind_model_feature_nan_total": {"sim": 1.0}}
 
     def fake_query(url, expr):
