@@ -53,7 +53,7 @@ def evaluate(api: str, relevance: Path, limit: int = 100, min_grade: int = 2) ->
         if not relevant:
             continue
         r = search(api, q, limit)
-        ranked = [x["episode_id"] for x in r["results"]]
+        ranked = [x["episode_id"] for x in (r.get("results") or [])]
         rows.append({
             "query_type": q["query_type"],
             "ndcg_at_5": metrics.ndcg_at_k(ranked, grades, 5),

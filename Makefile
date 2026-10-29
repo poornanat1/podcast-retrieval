@@ -122,8 +122,10 @@ ARTIFACT ?= data/models/two-tower-llm-names-1.0.0-56e2c0708f7e-3b1c13c6
 index:
 	$(UV) run python -m ml.embeddings.two_tower_index --artifact $(ARTIFACT)
 
+# The headline experiment, checked against the recorded numbers
+# (experiments/eval/reproduce-expected.json); RECORD=1 re-records them.
 reproduce:
-	@echo "make reproduce: not implemented yet" && exit 1
+	$(UV) run python -m ml.evaluation.reproduce $(if $(RECORD),--record,)
 
 # --- serving -------------------------------------------------------------
 
