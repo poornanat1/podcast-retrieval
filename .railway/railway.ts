@@ -62,7 +62,10 @@ export default defineRailway((ctx) => {
     // Through the image's entrypoint, which drops to the postgres user.
     start:
       "docker-entrypoint.sh postgres -c shared_buffers=6GB -c effective_cache_size=16GB -c work_mem=16MB " +
-      "-c maintenance_work_mem=2GB -c max_connections=100 -c max_parallel_workers_per_gather=2",
+      "-c maintenance_work_mem=2GB -c max_connections=100 -c max_parallel_workers_per_gather=2 " +
+      // Containers get a 64 MB /dev/shm; parallel queries and index builds
+      // need dynamic shared memory, so back it with mmap'd files instead.
+      "-c dynamic_shared_memory_type=mmap",
     env: {
       POSTGRES_USER: "podfind",
       POSTGRES_DB: "podfind",
