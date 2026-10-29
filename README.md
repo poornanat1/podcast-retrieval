@@ -7,7 +7,10 @@ when the model loses.
 Type or say what you want — *"English episodes under 45
 minutes about practical uses of AI, published this year, no explicit
 content"* — and get episodes back, ranked, with the constraints enforced
-as hard filters.
+as hard filters. It runs at
+[api-production-0ff59.up.railway.app](https://api-production-0ff59.up.railway.app).
+
+![PodFind results for "history of the roman republic under 45 minutes"](docs/images/app-results.png)
 
 ## What exists
 
@@ -22,9 +25,10 @@ as hard filters.
 | Datasets | Deterministic builder: snapshot + config + code revision → identical versioned Parquet splits. Generators for title queries, weak topic labels, and LLM-written queries with mined hard negatives. |
 | Learned ranker | LightGBM LambdaRank over the union of lexical, E5, and two-tower candidates; 31 shared feature definitions; query-grouped cross-validation. |
 | Two-tower model | PyTorch, shared E5 encoder, structured episode features, shared training/serving feature contract, resumable training with judged-pool validation, distillation, hard-negative mining and auditing, acceptance gates with MLflow registration. |
-| Serving | Go API with query understanding, concurrent three-leg retrieval, reranking through an ONNX model server, stored searches, attributed impression and playback events, and a minimal web app. A model bundle is promoted only after training-serving parity checks pass. |
+| Serving | Go API with query understanding, concurrent three-leg retrieval, reranking through an ONNX model server, stored searches, attributed impression and playback events, and the web app. A model bundle is promoted only after training-serving parity checks pass. |
 | Voice | Recording in the web app, local Whisper transcription through a speech server, an editable transcript, consent-gated retention, and session export and deletion. A synthetic speech test set and a voice-robustness report quantify what transcription costs retrieval. |
-| Deployment, monitoring | Not built. |
+| Web app | Static files served by the API: one search with voice and a live level meter, filters as pills, the understood query as removable chips, an editable transcript, numbered results with explanations and one shared player, data export and deletion, a light theme, shareable URLs, a web app manifest. Lighthouse 100 on every category. |
+| Deployment, monitoring | Railway from `.railway/railway.ts`: one image per process, Postgres with pgvector, buckets, Prometheus and Grafana with alert rules, a scheduled drift check shown to catch a real serving skew, and a load tester for the SLOs. |
 
 ## Results so far
 

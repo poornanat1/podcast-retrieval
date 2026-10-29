@@ -73,9 +73,9 @@ export default defineRailway((ctx) => {
       PGDATA: "/var/lib/postgresql/data/pgdata",
     },
     volumeMounts: { "/var/lib/postgresql/data": pgData },
-    // Public TCP proxy for loading the catalog from outside; remove (and
-    // apply) once the copy is done, the services reach Postgres privately.
-    tcp: [5432],
+    // To load the catalog from outside, add `tcp: [5432]` here, apply, run
+    // deploy/railway/copy-catalog.sh, then remove it and apply again; the
+    // services reach Postgres privately.
   });
 
   const databaseUrl =

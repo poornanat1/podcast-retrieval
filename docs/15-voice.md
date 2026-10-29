@@ -81,12 +81,13 @@ links both.
 
 ## The web app
 
-The microphone button records through the Web Audio API, downsamples to
-16 kHz and encodes 16-bit WAV in the page, so the server never decodes a
-compressed container. The transcript lands in the search box with its
-language, confidence and transcription time; the user can correct it and
-search again, which is sent as a `voice_edited` text search. A playback
-counts as a skip and impressions are posted as for typed search.
+The microphone button records through the Web Audio API with a live
+level meter, downsamples to 16 kHz and encodes 16-bit WAV in the page, so
+the server never decodes a compressed container. The transcript lands in
+the search box with its language, confidence and length; the user can
+correct it and search again, which is sent as a `voice_edited` text
+search. Impressions and playback events are posted as for typed search.
+The app as a whole is described in [17-web-app.md](17-web-app.md).
 
 ## The speech test set
 

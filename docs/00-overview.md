@@ -35,7 +35,7 @@ Built and measured:
   [04-retrieval.md](04-retrieval.md), [08-models.md](08-models.md)
 - **Serving** — a Go API with query understanding, concurrent hybrid
   retrieval, reranking through an ONNX model server, stored searches,
-  attributed interaction events, and a minimal web app; promotion of a
+  attributed interaction events, and the web app; promotion of a
   model bundle is gated on training-serving parity checks.
   [14-serving.md](14-serving.md)
 
@@ -74,6 +74,7 @@ The ML worker entry point is a scaffold.
 | [14-serving.md](14-serving.md) | Model bundle, model server, Go API, events, parity and promotion |
 | [15-voice.md](15-voice.md) | Voice search, the speech server, data controls, the speech test set and its evaluation |
 | [16-monitoring.md](16-monitoring.md) | Metrics, alerts, the drift check and its skew demonstration, the load test |
+| [17-web-app.md](17-web-app.md) | The web app: design, structure, states, events, accessibility and performance |
 | [data-card.md](data-card.md) | Data sources, label taxonomy, freeze state, training-data coverage |
 | [model-card.md](model-card.md) | The registered retriever: data, evaluation, cold start, failure modes |
 | [licensing.md](licensing.md) | Rights and responsibilities for podcast content |

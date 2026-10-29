@@ -1,0 +1,30 @@
+{
+  "started": "2026-10-29T01:15:28.687701Z",
+  "duration": "2m0.001s",
+  "concurrency": 8,
+  "api": "https://api-production-0ff59.up.railway.app",
+  "searches": 1869,
+  "searches_per_second": 15.57485551621867,
+  "search_status": {
+    "200": 1869
+  },
+  "availability": 1,
+  "search_ms": {
+    "max": 4222.433,
+    "n": 1869,
+    "p50": 375.553,
+    "p95": 914.62,
+    "p99": 1670.823
+  },
+  "events_sent": 38834,
+  "events_accepted": 38834,
+  "events_stored": 38834,
+  "event_persistence": 1,
+  "event_ms": {
+    "max": 853.618,
+    "n": 3700,
+    "p50": 59.493,
+    "p95": 91.26,
+    "p99": 167.383
+  }
+}

@@ -63,7 +63,7 @@ token with the training featurizer.
 `make api` (`cmd/api`, port 8080) applies migrations, reads the model
 server's manifest for the index keys and candidate depth, and serves the
 endpoints in [api/openapi/openapi.yaml](../api/openapi/openapi.yaml) and the
-web app at `/`.
+web app at `/` ([17-web-app.md](17-web-app.md)).
 
 A search (`internal/search`):
 

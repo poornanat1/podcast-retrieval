@@ -33,10 +33,35 @@ API, model server and speech server native. The design is in
   answer; transiently failing feeds back off instead of being re-enqueued
   every cycle.
 
-Not yet done: the deployment itself. Creating the project needs a Railway
-login and plan choice (the hot set needs more than the Hobby plan's 8 GB
-per service), and loading the catalog is a multi-hour copy. Everything is
-ready to apply; the steps are in the deployment document.
+## The deployment
+
+Applied the same evening on the Pro plan, at
+[api-production-0ff59.up.railway.app](https://api-production-0ff59.up.railway.app):
+seven services (postgres, models, speech, api with two replicas,
+prometheus, grafana, drift), six volumes and two buckets, from the
+infrastructure file in four applies. The catalog copy over a temporary
+TCP proxy took 46 minutes for 1,788 podcasts, 795,533 episodes, 87,300
+transcripts and 1,678,366 vectors (three models' sets, 10 GB on the
+volume), and the two HNSW indexes 14 minutes serially. What the first
+deployment taught, each fixed in the repository:
+
+- Railway's builder rejects Docker cache mounts without an id (dropped).
+- A start command bypasses the image entrypoint, so Postgres ran as root
+  and refused (`docker-entrypoint.sh postgres …`).
+- Volumes mount root-owned, so the images that write to them run as
+  root.
+- Health checks arrive over IPv4 and the private network is IPv6, so the
+  Python servers bind a dual-stack socket themselves.
+- The container's 64 MB `/dev/shm` breaks parallel index builds and
+  parallel queries; indexes build serially and Postgres uses mmap-backed
+  dynamic shared memory.
+- The bucket helper in the infrastructure file did not create buckets;
+  they were created with the CLI and adopted by name.
+- The drift cron job needs the checked-in baseline in its image.
+
+Rollback is Railway's redeploy of a previous deployment in the
+dashboard; the CLI only redeploys the latest, so it was not exercised
+from here.
 
 ## The skew demonstration
 
@@ -87,28 +112,43 @@ Against the SLOs:
   three runs (2,110 searches).
 - **Event persistence 99.99%:** met; every accepted event was stored
   (24,659 verified in the database).
-- **Search p95 under 500 ms:** not met on the laptop, as it was not in
-  the serving report (593 ms with one client). Under eight clients p95 is
-  1.5 s, and it is 1.2 s even with one client with the monitoring
-  containers and the speech server sharing the machine. The cause is the
-  one the serving report established: the vector hot set (about 6 GB)
-  does not fit the Docker VM's cache beside the lexical scans, so the
-  legs contend for memory. The deployment gives Postgres its own host
-  with `shared_buffers=6GB` and prewarmed indexes; the p95 is to be
-  re-measured there with this same tool before the budget is called met
-  or missed.
+- **Search p95 under 500 ms:** not met on the laptop (as in the serving
+  report: the vector hot set does not fit the Docker VM's cache beside
+  the lexical scans), and not met on Railway either, though much closer;
+  see below.
 
 Event handling is cheap (p50 under 10 ms, p99 75 ms at eight clients)
 and did not affect search latency.
 
+### On Railway
+
+The same tool from the laptop against the public URL, after the catalog
+load, index build and prewarm, with the stored event count read through
+the proxy:
+
+| clients | duration | searches | per s | p50 ms | p95 ms | p99 ms | availability | events accepted / stored |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 1 min | 100 | 1.7 | 476 | 681 | 1,189 | 100% | 2,079 / 2,079 |
+| 8 | 2 min | 1,869 | 15.6 | 376 | 915 | 1,671 | 100% | 38,834 / 38,834 |
+
+These times include the round trip from the laptop, which the event
+requests put at about 50 ms (their p50). Availability and event
+persistence are met again. Search p95 is 681 ms with one client and
+915 ms with eight: better than the laptop, still above 500 ms. Within a
+search, the lexical leg hits its 300 ms limit on most queries as before,
+and the vector legs are within budget; the remaining time is the
+evidence query and the two model-server hops over the private network.
+The next levers are the ones the serving report listed (a smaller vector
+table or half-precision vectors so the hot set sits entirely in the
+buffer cache, and a lexical replica), plus running the load tester from
+inside the network to take the round trip out of the measurement.
+
 ## Exit criterion
 
-- Public URL serving text and voice search: **pending the Railway
-  apply and catalog load**; the images, configuration and load script
-  are complete and tested locally.
+- Public URL serving text and voice search: **met**; searches answer in
+  under half a second at the median over the internet.
 - Drift demo fires an alert: **met**, through both the drift check and
   Grafana, to the webhook.
-- Rollback: documented as a redeploy of the previous Railway deployment;
-  not yet exercised because nothing is deployed.
-- Load-test report: this document, local numbers; the deployed
-  measurement is the follow-up.
+- Rollback: documented as a redeploy of the previous Railway deployment
+  in the dashboard; not exercised from the CLI.
+- Load-test report: this document, local and deployed numbers.
