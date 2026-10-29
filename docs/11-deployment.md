@@ -44,10 +44,12 @@ stateless services on Railway.
    `railway config plan` and `railway config apply`. The plan lists every
    service, volume and bucket the file creates.
 2. **Set the shared variables** in the dashboard (Project settings >
-   Shared variables): `POSTGRES_PASSWORD`, `GRAFANA_ADMIN_PASSWORD`,
+   Shared variables): `POSTGRES_PASSWORD`, `GRAFANA_ADMIN_PASSWORD`, and
+   `OPENAI_API_KEY` if the speech server should use the OpenAI backend.
+   Apply again so the services pick them up. Alerts are visible in
+   Grafana's alert list; to have them posted somewhere, set
    `ALERT_WEBHOOK_URL` (a Slack incoming webhook or anything that accepts
-   `{"text": ...}`), and `OPENAI_API_KEY` if the speech server should use
-   the OpenAI backend. Apply again so the services pick them up.
+   `{"text": ...}`) on the `grafana` and `drift` services.
 3. **Publish the bundle.** With the `models` bucket's credentials from its
    Credentials tab:
 

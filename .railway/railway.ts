@@ -8,7 +8,9 @@
 //
 // Secrets are shared variables set once in the dashboard (Project
 // settings > Shared variables): POSTGRES_PASSWORD, GRAFANA_ADMIN_PASSWORD,
-// ALERT_WEBHOOK_URL (Slack-compatible), and optionally OPENAI_API_KEY.
+// and optionally OPENAI_API_KEY. Alerts show in Grafana's own alert list;
+// to also post them somewhere, add ALERT_WEBHOOK_URL (Slack-compatible)
+// to the grafana and drift services.
 // Each service names its Dockerfile; the build context is the repository
 // root. Loading the catalog needs a TCP proxy on postgres for the duration
 // of the copy; add it in the dashboard and remove it after
@@ -145,14 +147,13 @@ export default defineRailway((ctx) => {
       GF_SECURITY_ADMIN_USER: "admin",
       GF_SECURITY_ADMIN_PASSWORD: ctx.shared.GRAFANA_ADMIN_PASSWORD,
       PROMETHEUS_URL: "http://${{prometheus.RAILWAY_PRIVATE_DOMAIN}}:9090",
-      ALERT_WEBHOOK_URL: ctx.shared.ALERT_WEBHOOK_URL,
     },
     volumeMounts: { "/var/lib/grafana": grafanaData },
   });
 
   // The drift check: the model-server image with a different command, run
-  // every 30 minutes. It exits 2 and posts to the webhook when the served
-  // distributions drift from the checked-in baseline.
+  // every 30 minutes. It exits 2 (a failed run in Railway's view) when the
+  // served distributions drift from the checked-in baseline.
   const drift = service("drift", {
     source,
     build: dockerfile("ml/serving/Dockerfile"),
@@ -161,7 +162,6 @@ export default defineRailway((ctx) => {
     env: {
       DATABASE_URL: databaseUrl,
       PROMETHEUS_URL: "http://${{prometheus.RAILWAY_PRIVATE_DOMAIN}}:9090",
-      ALERT_WEBHOOK_URL: ctx.shared.ALERT_WEBHOOK_URL,
     },
   });
 
