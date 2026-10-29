@@ -70,6 +70,9 @@ export default defineRailway((ctx) => {
       PGDATA: "/var/lib/postgresql/data/pgdata",
     },
     volumeMounts: { "/var/lib/postgresql/data": pgData },
+    // Public TCP proxy for loading the catalog from outside; remove (and
+    // apply) once the copy is done, the services reach Postgres privately.
+    tcp: [5432],
   });
 
   const databaseUrl =
