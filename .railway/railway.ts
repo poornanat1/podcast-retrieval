@@ -121,7 +121,7 @@ export default defineRailway((ctx) => {
     source,
     build: dockerfile("Dockerfile"),
     healthcheck: "/healthz",
-    healthcheckTimeout: 300, // waits for the model server on its own
+    healthcheckTimeout: 1800, // migrations run at start; 0013 rewrote the transcripts table
     replicas: { [REGION]: ctx.environment === "production" ? 2 : 1 },
     env: {
       PODFIND_CMD: "api",
