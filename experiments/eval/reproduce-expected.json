@@ -1,0 +1,27 @@
+{
+  "lexical-fts": {
+    "ndcg_at_10": 0.546,
+    "mrr": 0.718,
+    "recall_at_100": 0.2254
+  },
+  "vector-e5-small": {
+    "ndcg_at_10": 0.72,
+    "mrr": 0.9051,
+    "recall_at_100": 0.3688
+  },
+  "hybrid-rrf3:two-tower-llm-names-1.0.0-56e2c0708f7e-3b1c13c6": {
+    "ndcg_at_10": 0.769,
+    "mrr": 0.9271,
+    "recall_at_100": 0.4686
+  },
+  "two-tower:two-tower-llm-names-1.0.0-56e2c0708f7e-3b1c13c6": {
+    "ndcg_at_10": 0.7579,
+    "mrr": 0.9127,
+    "recall_at_100": 0.4206
+  },
+  "reranker:ranker-lambdamart-7bb99f61": {
+    "ndcg_at_10": 0.7948,
+    "mrr": 0.9174,
+    "recall_at_100": 0.5084
+  }
+}
