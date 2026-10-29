@@ -40,7 +40,10 @@ key of the raw file, and language.
 Generated, stored `tsvector` columns with GIN indexes: `episodes.search_tsv`
 (title A, description B), `podcasts.search_tsv` (title A, publisher and
 categories B, description C), `transcripts.search_tsv` (content D, capped
-at 500k characters). `podfind_ts_config(lang)` maps a feed language to a
+at 500k characters) and `transcripts.rank_tsv` (the first 8k characters,
+weight D: what the lexical leg ranks transcript matches with, since
+ranking every match with the full vector cost the leg its time budget;
+matching still uses the full vector). `podfind_ts_config(lang)` maps a feed language to a
 PostgreSQL text-search configuration (English, Spanish, French, German,
 Portuguese, Italian, Dutch, else `simple`) and is used both when indexing
 and when parsing queries.
