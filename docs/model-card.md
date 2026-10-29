@@ -1,6 +1,6 @@
 # Model card — PodFind two-tower retriever
 
-**Status: draft.** Describes the registered champion,
+**Status: current.** Describes the registered champion,
 `podfind-two-tower` version 2 in the MLflow model registry. Numbers come
 from the reports linked under each section; update this card when the
 champion changes.
@@ -103,6 +103,11 @@ to ONNX. On the 30 golden parity queries the ONNX query tower matches
 PyTorch to 4e-7, and the production pipeline returns the same candidates,
 features (to 1e-6), and top 10 as the training-side code; see
 [experiments/serving-report.md](../experiments/serving-report.md).
+Deployed on Railway since 2026-10-29 behind the public API, with its
+index also serving "more like this" (episode-to-episode nearest
+neighbours, diversified across shows) and a drift check comparing served
+feature and score distributions with a recorded baseline every 30
+minutes ([16-monitoring.md](16-monitoring.md)).
 
 ## Known failure modes
 

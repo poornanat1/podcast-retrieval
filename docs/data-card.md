@@ -26,8 +26,12 @@ sources:
    remain.
 2. **Publisher transcripts** — plain-text/SRT/VTT/JSON transcripts linked
    from feeds (~11% episode coverage at the current catalog size).
-3. **Interaction events** — not yet collected; the schema exists and label
-   sources for real interactions are reserved in the taxonomy below.
+3. **Interaction events** — collected since the public deployment
+   (2026-10-29): searches, impressions and playback events from the web
+   app, attributed server-side to the stored search, keyed by an
+   anonymous browser session with export and deletion on request. Label
+   sources for them are reserved in the taxonomy below; no model has been
+   trained on them yet (the volume so far is load-test and smoke traffic).
 
 ## Label taxonomy
 
