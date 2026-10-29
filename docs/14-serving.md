@@ -108,11 +108,14 @@ episode's own vector in the served index (`ml/sql/similar_episodes.sql`,
 shared with the Python evaluation): the two-tower index by default,
 `model=e5` for the pretrained one. The source is excluded, the caller's
 hard filters apply inside the index scan, and the list is diversified
-across shows in Go (`internal/search/similar.go`): five times the limit
-is fetched, then other shows are taken first with at most two episodes
-per show, and the source's own show fills what remains. The response
-carries each result's cosine similarity and a `diversification` block
-(candidates seen, cap, same-show results, candidates passed over). The
+across shows in Go (`internal/search/similar.go`): twenty times the
+limit is fetched, then other shows are taken first with at most two
+episodes per show, the source's own show next under the same cap, and
+only if the list is still short (serialized shows own their episodes'
+whole neighbourhood) the nearest leftovers fill it. The response carries
+each result's cosine similarity and a `diversification` block
+(candidates seen, cap, same-show results, results added past the cap,
+candidates passed over). The
 quality measured without labels (intra-list diversity, novelty, show
 coverage, repetition, popularity concentration) is in the
 [final report](../experiments/final-report.md).

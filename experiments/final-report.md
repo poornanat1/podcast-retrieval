@@ -139,16 +139,29 @@ the design set is met ([deployment-report.md](deployment-report.md)).
 `GET /v1/episodes/{id}/similar` recommends the nearest episodes to an
 episode's own vector, diversified across shows. There are no labels for
 episode-to-episode similarity, so the evaluation
-(`ml.evaluation.similar`, {SIM_SEEDS} seed episodes sampled from the
+(`ml.evaluation.similar`, 300 seed episodes sampled from the
 catalog, ten results each) measures the list properties the design
 asked for:
 
-| index | intra-list diversity | novelty (other show) | shows per list | repetition | top-decile-show share (catalog {SIM_CATALOG_SHARE}) | similarity mean / min | p50 / p95 ms |
+| index | intra-list diversity | novelty (other show) | shows per list | repetition | top-decile-show share (catalog 0.14) | similarity mean / min | p50 / p95 ms |
 |---|---|---|---|---|---|---|---|
-| two-tower (learned) | {TT_ILD} | {TT_NOV} | {TT_SHOWS} | {TT_REP} | {TT_TOP} | {TT_SIM} | {TT_LAT} |
-| E5 (pretrained) | {E5_ILD} | {E5_NOV} | {E5_SHOWS} | {E5_REP} | {E5_TOP} | {E5_SIM} | {E5_LAT} |
+| two-tower (learned) | 0.240 | 0.25 | 2.6 | 0.016 | 0.13 | 0.79 / 0.76 | 55 / 403 |
+| E5 (pretrained) | 0.087 | 0.45 | 4.0 | 0.017 | 0.13 | 0.92 / 0.91 | 51 / 343 |
 
-{SIM_VERDICT}
+Both indexes recommend without concentrating on popular shows (the
+top-decile share equals the catalog's) and almost never repeat a title.
+They differ in character: the learned index stays inside the seed's own
+show three times out of four, because it was trained to pull a show's
+episodes together for name queries, so its lists are more varied in
+content (intra-list diversity 0.24) but less novel; the pretrained E5
+index crosses shows for nearly half of each list and visits four shows
+per list, but its neighbours are near-duplicates of each other (0.09).
+The per-show cap would otherwise have cut most learned-index lists to
+two or three results, since a serialized show owns its episodes' whole
+neighbourhood; the list is filled past the cap and the response says by
+how much. Which behaviour is wanted is a product question the endpoint
+leaves to the caller (`model=e5` for breadth), and the next step is the
+one this evaluation cannot take: judged pairs.
 
 ## Reproducibility
 

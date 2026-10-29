@@ -1,0 +1,50 @@
+{
+  "api": "http://localhost:8080",
+  "seeds": 300,
+  "limit": 10,
+  "top_decile_catalog_share": 0.13693209458312855,
+  "legs": {
+    "two_tower": {
+      "lists": 300,
+      "empty": 0,
+      "failures": 0,
+      "ild": 0.23963717015363553,
+      "novelty": 0.24633333333333335,
+      "shows_per_list": 2.6266666666666665,
+      "repetition": 0.016333333333333335,
+      "top_decile_share": 0.13066666666666668,
+      "sim_mean": 0.7878827784911752,
+      "sim_min": 0.7581612812832776,
+      "distinct_episodes": 2981,
+      "distinct_shows": 470,
+      "recommended": 3000,
+      "same_show_shown": 7.536666666666667,
+      "dropped": 190.0,
+      "latency_ms": {
+        "p50": 54.622374940663576,
+        "p95": 402.7041669469327
+      }
+    },
+    "e5": {
+      "lists": 300,
+      "empty": 0,
+      "failures": 0,
+      "ild": 0.08717098004729659,
+      "novelty": 0.4506666666666666,
+      "shows_per_list": 3.9766666666666666,
+      "repetition": 0.017333333333333333,
+      "top_decile_share": 0.12699999999999997,
+      "sim_mean": 0.9157974498869883,
+      "sim_min": 0.9067110972119424,
+      "distinct_episodes": 2972,
+      "distinct_shows": 610,
+      "recommended": 3000,
+      "same_show_shown": 5.493333333333333,
+      "dropped": 190.0,
+      "latency_ms": {
+        "p50": 50.63316598534584,
+        "p95": 343.18795800209045
+      }
+    }
+  }
+}
