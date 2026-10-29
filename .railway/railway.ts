@@ -6,9 +6,11 @@
 //   railway config plan          # preview
 //   railway config apply         # create or update
 //
-// Secrets are shared variables set once in the dashboard (Project
-// settings > Shared variables): POSTGRES_PASSWORD, GRAFANA_ADMIN_PASSWORD,
-// and optionally OPENAI_API_KEY. Alerts show in Grafana's own alert list;
+// Secrets are set once with the CLI and preserved by every apply:
+//   railway variable set -s postgres POSTGRES_PASSWORD=…
+//   railway variable set -s grafana GF_SECURITY_ADMIN_PASSWORD=…
+//   railway variable set -s speech OPENAI_API_KEY=…   (optional)
+// Alerts show in Grafana's own alert list;
 // to also post them somewhere, add ALERT_WEBHOOK_URL (Slack-compatible)
 // to the grafana and drift services.
 // Each service names its Dockerfile; the build context is the repository
@@ -21,6 +23,7 @@ import {
   github,
   group,
   image,
+  preserve,
   project,
   ref,
   service,
@@ -59,14 +62,14 @@ export default defineRailway((ctx) => {
     env: {
       POSTGRES_USER: "podfind",
       POSTGRES_DB: "podfind",
-      POSTGRES_PASSWORD: ctx.shared.POSTGRES_PASSWORD,
+      POSTGRES_PASSWORD: preserve(),
       PGDATA: "/var/lib/postgresql/data/pgdata",
     },
     volumeMounts: { "/var/lib/postgresql/data": pgData },
   });
 
   const databaseUrl =
-    "postgres://podfind:${{shared.POSTGRES_PASSWORD}}@${{postgres.RAILWAY_PRIVATE_DOMAIN}}:5432/podfind?sslmode=disable";
+    "postgres://podfind:${{postgres.POSTGRES_PASSWORD}}@${{postgres.RAILWAY_PRIVATE_DOMAIN}}:5432/podfind?sslmode=disable";
 
   // --- inference ------------------------------------------------------------
 
@@ -97,7 +100,7 @@ export default defineRailway((ctx) => {
       PODFIND_STT_DEVICE: "cpu",
       HF_HOME: "/data/hf",
       OMP_NUM_THREADS: "4",
-      OPENAI_API_KEY: ctx.shared.OPENAI_API_KEY,
+      OPENAI_API_KEY: preserve(),
     },
     volumeMounts: { "/data": speechCache },
   });
@@ -145,7 +148,7 @@ export default defineRailway((ctx) => {
       PORT: "3000",
       GF_SERVER_HTTP_PORT: "3000",
       GF_SECURITY_ADMIN_USER: "admin",
-      GF_SECURITY_ADMIN_PASSWORD: ctx.shared.GRAFANA_ADMIN_PASSWORD,
+      GF_SECURITY_ADMIN_PASSWORD: preserve(),
       PROMETHEUS_URL: "http://${{prometheus.RAILWAY_PRIVATE_DOMAIN}}:9090",
     },
     volumeMounts: { "/var/lib/grafana": grafanaData },

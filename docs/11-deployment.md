@@ -43,10 +43,15 @@ stateless services on Railway.
    `production` environment), `cd .railway && npm install && cd ..`, then
    `railway config plan` and `railway config apply`. The plan lists every
    service, volume and bucket the file creates.
-2. **Set the shared variables** in the dashboard (Project settings >
-   Shared variables): `POSTGRES_PASSWORD`, `GRAFANA_ADMIN_PASSWORD`, and
-   `OPENAI_API_KEY` if the speech server should use the OpenAI backend.
-   Apply again so the services pick them up. Alerts are visible in
+2. **Set the secrets** once; every later apply preserves them:
+
+   ```sh
+   railway variable set -s postgres POSTGRES_PASSWORD=…
+   railway variable set -s grafana GF_SECURITY_ADMIN_PASSWORD=…
+   railway variable set -s speech OPENAI_API_KEY=…    # only for the OpenAI STT backend
+   ```
+
+   Alerts are visible in
    Grafana's alert list; to have them posted somewhere, set
    `ALERT_WEBHOOK_URL` (a Slack incoming webhook or anything that accepts
    `{"text": ...}`) on the `grafana` and `drift` services.
