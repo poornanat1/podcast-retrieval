@@ -11,8 +11,8 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project --only-group speech
 COPY ml ./ml
-RUN mkdir -p /data/hf && useradd --create-home --uid 10001 podfind && chown -R podfind /data
-USER podfind
+# Runs as root: Railway mounts volumes owned by root, and /data is one.
+RUN mkdir -p /data/hf
 ENV HF_HOME=/data/hf PODFIND_STT_DEVICE=cpu OMP_NUM_THREADS=4 PORT=8082
 EXPOSE 8082
 CMD ["sh", "-c", "exec python -m ml.speech.server --host :: --port ${PORT:-8082}"]

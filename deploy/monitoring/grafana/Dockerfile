@@ -4,6 +4,8 @@
 # environment (ALERT_WEBHOOK_URL defaults to a sink so provisioning
 # succeeds before a webhook is configured).
 FROM grafana/grafana:13.3.0
+# Root, so the /var/lib/grafana volume (mounted root-owned on Railway) is writable.
+USER root
 ENV PROMETHEUS_URL=http://prometheus:9090 \
     ALERT_WEBHOOK_URL=http://127.0.0.1:9/unconfigured \
     GF_ANALYTICS_REPORTING_ENABLED=false \

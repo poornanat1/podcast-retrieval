@@ -12,8 +12,8 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project --only-group serving
 COPY ml ./ml
 COPY deploy/railway/model-server-entrypoint.sh /entrypoint.sh
-RUN mkdir -p /data/bundles && useradd --create-home --uid 10001 podfind && chown -R podfind /data
-USER podfind
+# Runs as root: Railway mounts volumes owned by root, and /data is one.
+RUN mkdir -p /data/bundles
 ENV PODFIND_BUNDLE_DIR=/data/bundles PORT=8081
 EXPOSE 8081
 ENTRYPOINT ["/entrypoint.sh"]
