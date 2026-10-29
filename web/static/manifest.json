@@ -1,0 +1,12 @@
+{
+  "name": "PodFind",
+  "short_name": "PodFind",
+  "description": "Search podcast episodes by what they are about, typed or spoken.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#262626",
+  "theme_color": "#262626",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
