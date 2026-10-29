@@ -65,6 +65,7 @@ def fetch(bundle_id: str, dest: Path) -> Path:
     if manifest["bundle_id"] != bundle_id:
         raise ValueError(f"object {prefix} holds bundle {manifest['bundle_id']}, not {bundle_id}")
     for name in manifest["files"]:
+        print(f"fetching {prefix}/{name}", flush=True)
         client.download_file(bucket, f"{prefix}/{name}", str(tmp / name))
     (tmp / MANIFEST).write_bytes(manifest_body)
     verify(tmp)

@@ -85,7 +85,7 @@ export default defineRailway((ctx) => {
     source,
     build: dockerfile("ml/serving/Dockerfile"),
     healthcheck: "/healthz",
-    healthcheckTimeout: 300, // first start downloads the bundle (≈ 1 GB)
+    healthcheckTimeout: 1200, // first start downloads the bundle (≈ 1 GB)
     env: {
       PORT: "8081",
       PODFIND_BUNDLE_ID: BUNDLE_ID,
@@ -100,7 +100,7 @@ export default defineRailway((ctx) => {
     source,
     build: dockerfile("ml/speech/Dockerfile"),
     healthcheck: "/healthz",
-    healthcheckTimeout: 600, // first start downloads Whisper small (≈ 1 GB)
+    healthcheckTimeout: 1200, // first start downloads Whisper small (≈ 1 GB)
     env: {
       PORT: "8082",
       PODFIND_STT: "whisper:openai/whisper-small", // or openai:gpt-4o-mini-transcribe
@@ -118,7 +118,7 @@ export default defineRailway((ctx) => {
     source,
     build: dockerfile("Dockerfile"),
     healthcheck: "/healthz",
-    healthcheckTimeout: 120,
+    healthcheckTimeout: 300, // waits for the model server on its own
     replicas: { [REGION]: ctx.environment === "production" ? 2 : 1 },
     env: {
       PODFIND_CMD: "api",
