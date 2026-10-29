@@ -35,6 +35,8 @@ func New(svc *search.Service, web fs.FS) *Handler {
 	h.mux.HandleFunc("POST /v1/search/voice", h.searchVoice)
 	h.mux.HandleFunc("GET /v1/search/{queryId}", h.getSearch)
 	h.mux.HandleFunc("GET /v1/episodes/{episodeId}", h.getEpisode)
+	h.mux.HandleFunc("GET /v1/episodes/{episodeId}/similar", h.similar)
+	h.mux.HandleFunc("GET /v1/suggest", h.suggest)
 	h.mux.HandleFunc("POST /v1/events/impression", h.impression)
 	h.mux.HandleFunc("POST /v1/events/playback/{action}", h.playback)
 	h.mux.HandleFunc("GET /v1/me/data", h.exportData)
@@ -200,6 +202,49 @@ func (h *Handler) getEpisode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, e)
+}
+
+// similar is "more like this": the nearest episodes to one episode in the
+// served index, diversified across shows. Filters and limit are query
+// parameters; model selects the index leg (two_tower, the default, or e5).
+func (h *Handler) similar(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("episodeId"), 10, 64)
+	if err != nil {
+		writeError(w, search.ErrNotFound)
+		return
+	}
+	q := r.URL.Query()
+	req := search.SimilarRequest{EpisodeID: id, Model: q.Get("model"),
+		Filters: search.Filters{Language: q.Get("language"), PublishedAfter: q.Get("published_after"),
+			NoExplicit: q.Get("no_explicit") == "true"}}
+	if v := q.Get("max_duration_seconds"); v != "" {
+		if req.Filters.MaxDurationSeconds, err = strconv.Atoi(v); err != nil {
+			writeError(w, fmt.Errorf("%w: max_duration_seconds must be an integer", search.ErrBadRequest))
+			return
+		}
+	}
+	if v := q.Get("limit"); v != "" {
+		if req.Limit, err = strconv.Atoi(v); err != nil {
+			writeError(w, fmt.Errorf("%w: limit must be an integer", search.ErrBadRequest))
+			return
+		}
+	}
+	resp, err := h.Search.Similar(r.Context(), req)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	metrics.Similar.WithLabelValues(resp.Model).Inc()
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (h *Handler) suggest(w http.ResponseWriter, r *http.Request) {
+	out, err := h.Search.Suggest(r.Context(), r.URL.Query().Get("q"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"suggestions": out})
 }
 
 func (h *Handler) impression(w http.ResponseWriter, r *http.Request) {

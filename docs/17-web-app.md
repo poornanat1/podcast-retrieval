@@ -24,8 +24,8 @@ font never shifts the layout; the system stack renders until it arrives.
 - **Masthead:** name, section, catalog size (read from the API's index
   metrics; the static figure stands in if `/metrics` is unreachable).
 - **Hero:** the headline, which compacts once results arrive.
-- **Search:** one input with the microphone and the submit button,
-  filters as pills (language, length, published, explicit, keep
+- **Search:** one input with the microphone and the submit button, show
+  and publisher names suggested from two characters on, filters as pills (language, length, published, explicit, keep
   recordings). Typed filters are understood by the API; sent filters and
   parsed ones alike are echoed back as chips under *Understood as*, each
   removable, and removing one re-runs the search on the understood text.
@@ -35,7 +35,9 @@ font never shifts the layout; the system stack renders until it arrives.
   and whether the recording was kept.
 - **Results:** numbered rows with artwork, title, show and publisher,
   duration, date, language and an explicit flag, the server's
-  explanation, and a play button. While a search runs, skeleton rows
+  explanation, a play button, and *More like this*, which opens the five
+  nearest episodes from the learned index under the row (other shows
+  first), each playable. While a search runs, skeleton rows
   take their place. No results shows an empty state with advice; a
   failed search shows the error in the status line, which also reports
   degraded retrieval legs.
@@ -84,6 +86,5 @@ focus is visible, and reduced-motion preferences disable the animations.
 
 ## Not built
 
-Suggestions from the catalog's show names while typing (needs an
-endpoint), an episode page with "more like this" (the similar-episodes
-work), and offline caching through a service worker.
+A separate episode page (the row expands in place instead), and offline
+caching through a service worker.

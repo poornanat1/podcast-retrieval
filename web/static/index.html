@@ -33,7 +33,8 @@
 
   <form id="search" class="search" autocomplete="off" role="search">
     <div class="search-box" id="search-box">
-      <input id="q" type="search" name="q" placeholder="practical uses of AI, under 45 minutes" aria-label="Search podcast episodes" enterkeyhint="search" spellcheck="false">
+      <input id="q" type="search" name="q" list="suggest" placeholder="practical uses of AI, under 45 minutes" aria-label="Search podcast episodes" enterkeyhint="search" spellcheck="false">
+      <datalist id="suggest"></datalist>
       <div class="meter" id="meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
       <button type="button" class="mic" id="mic" aria-label="Search by voice" aria-pressed="false" title="Search by voice">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>

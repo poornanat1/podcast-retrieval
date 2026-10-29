@@ -101,6 +101,27 @@ rewrites the parameters for pgx. Statements run in exec mode, with no cached
 prepared statements: a cached statement can switch to a generic plan, which
 cannot use the per-model partial HNSW indexes.
 
+## More like this, and suggestions
+
+`GET /v1/episodes/{id}/similar` returns the nearest episodes to one
+episode's own vector in the served index (`ml/sql/similar_episodes.sql`,
+shared with the Python evaluation): the two-tower index by default,
+`model=e5` for the pretrained one. The source is excluded, the caller's
+hard filters apply inside the index scan, and the list is diversified
+across shows in Go (`internal/search/similar.go`): five times the limit
+is fetched, then other shows are taken first with at most two episodes
+per show, and the source's own show fills what remains. The response
+carries each result's cosine similarity and a `diversification` block
+(candidates seen, cap, same-show results, candidates passed over). The
+quality measured without labels (intra-list diversity, novelty, show
+coverage, repetition, popularity concentration) is in the
+[final report](../experiments/final-report.md).
+
+`GET /v1/suggest?q=` completes two or more typed characters against show
+and publisher names (start of the name or of any word in it), eight at
+most, most popular first; the web app shows them as the input's
+suggestions.
+
 ## Interaction events
 
 `POST /v1/events/impression` takes a stored search's `query_id` and the

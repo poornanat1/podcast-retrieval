@@ -151,7 +151,8 @@ function renderResults(resp) {
           r.published_at ? el("span", {}, date(r.published_at)) : null,
           r.language ? el("span", {}, languageName(r.language)) : null,
           r.explicit ? el("span", {}, "explicit") : null),
-        r.explanation?.length ? el("p", { class: "why" }, r.explanation.join(" · ")) : null),
+        r.explanation?.length ? el("p", { class: "why" }, r.explanation.join(" · ")) : null,
+        el("button", { class: "more", type: "button", "aria-expanded": "false", onclick: (e) => toggleSimilar(e.currentTarget, r) }, "More like this")),
       playButton(r));
     list.append(item);
   });
@@ -175,6 +176,58 @@ function render(resp) {
   renderUnderstood(resp);
   renderResults(resp);
 }
+
+// "More like this": the nearest episodes to this one in the served index,
+// diversified across shows, shown under the row.
+async function toggleSimilar(button, r) {
+  const row = button.closest(".result");
+  const open = button.getAttribute("aria-expanded") === "true";
+  row.querySelectorAll(".similar, .similar-note").forEach((n) => n.remove());
+  button.setAttribute("aria-expanded", String(!open));
+  if (open) return;
+  const note = el("p", { class: "similar-note" }, "Finding episodes like this one");
+  row.append(note);
+  try {
+    const f = filters();
+    const params = new URLSearchParams({ limit: "5" });
+    for (const [k, v] of Object.entries(f)) if (v) params.set(k, String(v));
+    const res = await fetch(`/v1/episodes/${r.episode_id}/similar?${params}`);
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || res.statusText);
+    note.remove();
+    if (!d.results.length) { row.append(el("p", { class: "similar-note" }, "Nothing close enough with these filters.")); return; }
+    const list = el("ul", { class: "similar", "aria-label": `Episodes like ${r.title}` });
+    for (const s of d.results) {
+      list.append(el("li", {},
+        el("img", { src: s.artwork_url, alt: "", loading: "lazy", width: "40", height: "40" }),
+        el("div", {},
+          el("div", { class: "s-title" }, el("button", { type: "button", onclick: () => play(s) }, s.title)),
+          el("div", { class: "s-meta" }, [s.show, minutes(s.duration_seconds), date(s.published_at), `${Math.round(s.similarity * 100)}% similar`].filter(Boolean).join(" · "))),
+        playButton(s)));
+    }
+    row.append(list);
+    const shows = new Set(d.results.map((s) => s.show)).size;
+    row.append(el("p", { class: "similar-note" }, `${d.results.length} episodes from ${shows} ${shows === 1 ? "show" : "shows"} · ${d.model === "e5" ? "pretrained" : "learned"} index`));
+  } catch (e) {
+    note.textContent = `Could not load similar episodes: ${e.message}`;
+  }
+}
+
+// Show and publisher names complete what is typed (two characters on).
+let suggestTimer = 0, lastSuggest = "";
+$("q").addEventListener("input", () => {
+  clearTimeout(suggestTimer);
+  const q = $("q").value.trim();
+  if (q.length < 2 || q === lastSuggest) return;
+  suggestTimer = setTimeout(async () => {
+    lastSuggest = q;
+    try {
+      const d = await (await fetch(`/v1/suggest?q=${encodeURIComponent(q)}`)).json();
+      const list = $("suggest");
+      list.replaceChildren(...(d.suggestions || []).map((s) => el("option", { value: s.text }, s.kind)));
+    } catch {}
+  }, 150);
+});
 
 // --- search --------------------------------------------------------------------------------
 

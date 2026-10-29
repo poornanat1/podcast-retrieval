@@ -71,6 +71,69 @@ paths:
       responses:
         "200": { description: The stored search. It never includes the session id, which alone authorizes export and deletion. }
         "404": { $ref: "#/components/responses/Error" }
+  /v1/episodes/{episodeId}/similar:
+    get:
+      summary: More like this episode
+      description: The nearest episodes to one episode's own vector in the served index, the source excluded, diversified across shows (at most two per show, other shows before the source's own).
+      parameters:
+        - { name: episodeId, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 10 } }
+        - { name: model, in: query, schema: { type: string, enum: [two_tower, e5], default: two_tower } }
+        - { name: language, in: query, schema: { type: string } }
+        - { name: max_duration_seconds, in: query, schema: { type: integer } }
+        - { name: published_after, in: query, schema: { type: string, format: date } }
+        - { name: no_explicit, in: query, schema: { type: boolean } }
+      responses:
+        "200":
+          description: Similar episodes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  episode_id: { type: integer, format: int64 }
+                  model: { type: string }
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        rank: { type: integer }
+                        episode_id: { type: integer, format: int64 }
+                        title: { type: string }
+                        show: { type: string }
+                        publisher: { type: string }
+                        similarity: { type: number, description: Cosine similarity to the source episode }
+                  diversification:
+                    type: object
+                    properties:
+                      candidates: { type: integer }
+                      max_per_show: { type: integer }
+                      same_show_shown: { type: integer }
+                      dropped: { type: integer }
+                  timings_ms: { type: object, additionalProperties: { type: number } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/suggest:
+    get:
+      summary: Show and publisher names completing a prefix
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 2, maxLength: 80 } }
+      responses:
+        "200":
+          description: Up to eight names, most popular first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  suggestions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        text: { type: string }
+                        kind: { type: string, enum: [show, publisher] }
   /v1/episodes/{episodeId}:
     get:
       summary: Episode metadata with its show

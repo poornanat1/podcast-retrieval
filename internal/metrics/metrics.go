@@ -73,6 +73,10 @@ var (
 		Name: "podfind_voice_retained_total", Help: "Voice searches by whether the recording was kept."},
 		[]string{"retained"})
 
+	Similar = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "podfind_similar_total", Help: "Similar-episode requests by index leg."},
+		[]string{"model"})
+
 	Events = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "podfind_events_total", Help: "Interaction events recorded."},
 		[]string{"type"})

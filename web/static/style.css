@@ -152,6 +152,18 @@ kbd { font: inherit; border: 1px solid var(--line); border-radius: 4px; padding:
 .meta { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); }
 .why { margin: 12px 0 0; font-size: 14px; color: var(--ink-soft); }
 .why::before { content: "+ "; color: var(--ink-faint); }
+.more { margin-top: 12px; background: none; border: 0; padding: 0; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-faint); }
+.more:hover, .more[aria-expanded="true"] { color: var(--ink); }
+.similar { grid-column: 1 / -1; margin: 6px 0 0; padding: 0 0 0 clamp(0px, 10vw, 160px); list-style: none; }
+.similar li { display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px dashed var(--line); }
+.similar img { width: 40px; height: 40px; object-fit: cover; background: var(--bg-raise); filter: grayscale(1); }
+.similar .s-title { font-size: 15px; }
+.similar .s-title button { background: none; border: 0; padding: 0; text-align: left; font: inherit; }
+.similar .s-title button:hover { text-decoration: underline; text-underline-offset: 3px; }
+.similar .s-meta { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); margin-top: 3px; }
+.similar .play { width: 36px; height: 36px; }
+.similar .play svg { width: 14px; height: 14px; }
+.similar-note { grid-column: 1 / -1; padding: 10px 0 0 clamp(0px, 10vw, 160px); font-size: 12px; color: var(--ink-faint); }
 .play {
   width: 48px; height: 48px; border-radius: 999px; border: 1px solid var(--line-strong); background: transparent; display: grid; place-items: center;
   transition: background .2s var(--ease), color .2s var(--ease), border-color .2s var(--ease);
@@ -235,6 +247,7 @@ body.has-player .foot { padding-bottom: 120px; }
   .rank { display: none; }
   .art { width: 64px; height: 64px; }
   .play { grid-column: 2; justify-self: start; width: 40px; height: 40px; margin-top: 4px; }
+  .similar, .similar-note { padding-left: 0; }
   .skeleton { grid-template-columns: 64px 1fr; }
   .skeleton .s-art { width: 64px; height: 64px; }
   .player { grid-template-columns: 40px minmax(0, 1fr) auto auto; grid-template-areas: "art text controls close" "progress progress progress progress"; gap: 10px 12px; }
