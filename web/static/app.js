@@ -37,6 +37,7 @@ function el(tag, attrs = {}, ...children) {
   for (const c of children) if (c !== null && c !== undefined && c !== false) node.append(c);
   return node;
 }
+function secure(url) { return (url || "").replace(/^http:\/\//, "https://"); }
 function minutes(seconds) { return seconds ? `${Math.max(1, Math.round(seconds / 60))} min` : ""; }
 function clock(s) { if (!isFinite(s)) return "–:––"; s = Math.floor(s); const m = Math.floor(s / 60), r = s % 60; return `${m}:${String(r).padStart(2, "0")}`; }
 function date(iso) { return iso ? new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : ""; }
@@ -142,7 +143,7 @@ function renderResults(resp) {
   resp.results.forEach((r, i) => {
     const item = el("li", { class: "result", id: `r-${r.episode_id}`, style: `animation-delay:${Math.min(i, 8) * 40}ms` },
       el("span", { class: "rank", "aria-hidden": "true" }, String(i + 1).padStart(2, "0")),
-      el("img", { class: "art", src: r.artwork_url, alt: "", loading: "lazy", width: "84", height: "84" }),
+      el("img", { class: "art", src: secure(r.artwork_url), alt: "", loading: "lazy", width: "84", height: "84" }),
       el("div", {},
         el("h2", { class: "result-title" }, el("button", { type: "button", onclick: () => play(r) }, r.title)),
         el("div", { class: "result-show" }, el("em", {}, r.show), r.publisher && r.publisher !== r.show ? ` · ${r.publisher}` : ""),
@@ -207,7 +208,7 @@ async function toggleSimilar(button, r) {
     const list = el("ul", { class: "similar", "aria-label": `Episodes like ${r.title}` });
     for (const s of d.results) {
       list.append(el("li", {},
-        el("img", { src: s.artwork_url, alt: "", loading: "lazy", width: "40", height: "40" }),
+        el("img", { src: secure(s.artwork_url), alt: "", loading: "lazy", width: "40", height: "40" }),
         el("div", {},
           el("div", { class: "s-title" }, el("button", { type: "button", onclick: () => play(s) }, s.title)),
           el("div", { class: "s-meta" }, [s.show, minutes(s.duration_seconds), date(s.published_at), `${Math.round(s.similarity * 100)}% similar`].filter(Boolean).join(" · "))),
@@ -249,7 +250,9 @@ function friendly(message) {
 }
 
 let inFlight = false;
-async function search() {
+// scrollToResults: only for a search the user asked for; a shared URL on
+// load keeps the page where the browser put it.
+async function search(scrollToResults = true) {
   const query = $("q").value.trim().slice(0, MAX_QUERY);
   if (!query) { if (!recorder.active) setStatus("Type something, or tap the microphone."); return; }
   if (inFlight) return; // a second tap while searching is not a second search
@@ -259,7 +262,7 @@ async function search() {
   setStatus("Searching");
   $("transcript").hidden = true;
   $("q").blur(); // dismisses the phone keyboard so the results show
-  if (window.innerWidth < 720) $("status").scrollIntoView({ behavior: "smooth", block: "start" });
+  if (scrollToResults && window.innerWidth < 720) $("status").scrollIntoView({ behavior: "smooth", block: "start" });
   const body = { query, session_id: sessionId(), limit: 20, filters: filters() };
   // A transcript corrected before searching stays linked to its voice search.
   if (state.voice && query !== state.voice.text) body.input = { mode: "voice_edited", parent_query_id: state.voice.queryId };
@@ -327,7 +330,7 @@ function play(result) {
   }
   state.playing = { ...result, started: false, lastProgress: 0 };
   audio.src = result.enclosure_url;
-  $("player-art").src = result.artwork_url || "";
+  $("player-art").src = secure(result.artwork_url);
   $("player-title").textContent = result.title;
   $("player-show").textContent = result.show;
   $("player").hidden = false;
@@ -360,7 +363,7 @@ $("player-close").addEventListener("click", () => {
 if ("mediaSession" in navigator) {
   audio.addEventListener("play", () => {
     const p = state.playing; if (!p) return;
-    navigator.mediaSession.metadata = new MediaMetadata({ title: p.title, artist: p.show, artwork: p.artwork_url ? [{ src: p.artwork_url }] : [] });
+    navigator.mediaSession.metadata = new MediaMetadata({ title: p.title, artist: p.show, artwork: p.artwork_url ? [{ src: secure(p.artwork_url) }] : [] });
   });
   navigator.mediaSession.setActionHandler("play", () => audio.play());
   navigator.mediaSession.setActionHandler("pause", () => audio.pause());
@@ -506,13 +509,13 @@ $("delete").addEventListener("click", async () => {
 
 // A shareable URL: /?q=… runs the search on load and the address bar follows
 // each search.
-window.addEventListener("popstate", () => { const q = new URLSearchParams(location.search).get("q"); if (q) { $("q").value = q; search(); } });
+window.addEventListener("popstate", () => { const q = new URLSearchParams(location.search).get("q"); if (q) { $("q").value = q; search(false); } });
 {
   const q = new URLSearchParams(location.search).get("q");
   if (q) {
     // Results are coming: lay the page out for them before they land.
     $("hero").classList.add("compact"); $("examples").hidden = true;
-    $("q").value = q; search();
+    $("q").value = q; search(false);
   }
 }
 
