@@ -4,8 +4,8 @@
   --bg: #262626;
   --bg-raise: #2d2d2d;
   --ink: #ebe4de;
-  --ink-soft: #b9b2ac;
-  --ink-faint: #7d7772;
+  --ink-soft: #c2bbb4;
+  --ink-faint: #9b958f;
   --line: #3b3b3b;
   --line-strong: #6a6560;
   --sans: "Inter Tight", "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
@@ -19,7 +19,7 @@
   --bg-raise: #e9e3dc;
   --ink: #262626;
   --ink-soft: #5b5752;
-  --ink-faint: #8d8781;
+  --ink-faint: #76706a;
   --line: #d9d2ca;
   --line-strong: #9c958e;
 }

@@ -32,7 +32,7 @@ function el(tag, attrs = {}, ...children) {
   for (const [k, v] of Object.entries(attrs)) {
     if (k === "class") node.className = v;
     else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
-    else if (v !== undefined && v !== "" && v !== false) node.setAttribute(k, v === true ? "" : v);
+    else if (k === "alt" || (v !== undefined && v !== "" && v !== false)) node.setAttribute(k, v === true ? "" : v);
   }
   for (const c of children) if (c !== null && c !== undefined && c !== false) node.append(c);
   return node;
@@ -144,7 +144,7 @@ function renderResults(resp) {
       el("span", { class: "rank", "aria-hidden": "true" }, String(i + 1).padStart(2, "0")),
       el("img", { class: "art", src: r.artwork_url, alt: "", loading: "lazy", width: "84", height: "84" }),
       el("div", {},
-        el("h3", { class: "result-title" }, el("button", { type: "button", onclick: () => play(r) }, r.title)),
+        el("h2", { class: "result-title" }, el("button", { type: "button", onclick: () => play(r) }, r.title)),
         el("div", { class: "result-show" }, el("em", {}, r.show), r.publisher && r.publisher !== r.show ? ` · ${r.publisher}` : ""),
         el("div", { class: "meta" },
           r.duration_seconds ? el("span", {}, minutes(r.duration_seconds)) : null,
@@ -417,7 +417,11 @@ $("delete").addEventListener("click", async () => {
 window.addEventListener("popstate", () => { const q = new URLSearchParams(location.search).get("q"); if (q) { $("q").value = q; search(); } });
 {
   const q = new URLSearchParams(location.search).get("q");
-  if (q) { $("q").value = q; search(); }
+  if (q) {
+    // Results are coming: lay the page out for them before they land.
+    $("hero").classList.add("compact"); $("examples").hidden = true;
+    $("q").value = q; search();
+  }
 }
 
 // --- catalog size in the masthead, from the served indexes -------------------------------------------
