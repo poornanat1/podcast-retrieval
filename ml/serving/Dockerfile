@@ -11,6 +11,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project --only-group serving
 COPY ml ./ml
+COPY experiments/monitoring ./experiments/monitoring
 COPY deploy/railway/model-server-entrypoint.sh /entrypoint.sh
 # Runs as root: Railway mounts volumes owned by root, and /data is one.
 RUN mkdir -p /data/bundles

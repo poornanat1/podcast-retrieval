@@ -11,7 +11,9 @@ mlartifacts
 # Local data: snapshots, datasets, models, speech clips. Bundles reach the
 # model server through the object store, not the image.
 data
-experiments
+# Configs and reports stay out, except the drift baseline the cron job reads.
+experiments/*
+!experiments/monitoring
 dashboards
 .env
 *.md
