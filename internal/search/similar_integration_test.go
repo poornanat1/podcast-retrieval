@@ -40,8 +40,13 @@ func TestSimilarDiversifiesAcrossShows(t *testing.T) {
 	if resp.Results[1].EpisodeID != episodes[2] || resp.Results[2].EpisodeID != episodes[1] {
 		t.Errorf("order = %d, %d", resp.Results[1].EpisodeID, resp.Results[2].EpisodeID)
 	}
-	if resp.Diversification.SameShowShown != 2 || resp.Diversification.MaxPerShow != 2 {
+	if resp.Diversification.SameShowShown != 2 || resp.Diversification.MaxPerShow != 2 || resp.Diversification.Uncapped != 0 {
 		t.Errorf("diversification = %+v", resp.Diversification)
+	}
+	// Asking for more than the cap allows fills from the leftovers.
+	full, err := svc.Similar(ctx, SimilarRequest{EpisodeID: episodes[0], Limit: 5})
+	if err != nil || len(full.Results) != 3 || full.Diversification.Uncapped != 0 {
+		t.Errorf("only three other episodes exist: %v %+v", err, full.Diversification)
 	}
 	for _, r := range resp.Results {
 		if r.EpisodeID == episodes[0] {

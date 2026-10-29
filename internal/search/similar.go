@@ -41,6 +41,7 @@ type Diversification struct {
 	Candidates    int `json:"candidates"`      // nearest neighbours considered
 	MaxPerShow    int `json:"max_per_show"`    // cap applied to every show
 	SameShowShown int `json:"same_show_shown"` // results from the source's own show
+	Uncapped      int `json:"uncapped"`        // results added past the cap to fill the list
 	Dropped       int `json:"dropped"`         // candidates passed over for the cap
 }
 
@@ -48,13 +49,15 @@ const (
 	similarDefaultLimit = 10
 	similarMaxLimit     = 50
 	similarMaxPerShow   = 2
-	similarOverfetch    = 5
+	similarOverfetch    = 20 // a serialized show can own the nearest hundred neighbours
 )
 
 // Similar returns the nearest episodes to the source in the chosen index,
 // diversified across shows: at most two results per show, and episodes from
 // the source's own show only after every other show in the candidate list
-// has been considered. Nearest-neighbour order is kept otherwise.
+// has been considered. If the cap leaves the list short (a neighbourhood
+// owned by one or two shows), the nearest remaining candidates fill it.
+// Nearest-neighbour order is kept otherwise.
 func (s *Service) Similar(ctx context.Context, req SimilarRequest) (SimilarResponse, error) {
 	start := time.Now()
 	limit := req.Limit
@@ -123,26 +126,41 @@ func (s *Service) Similar(ctx context.Context, req SimilarRequest) (SimilarRespo
 	}
 	retrieveMS := msSince(t0)
 
-	// Diversify: other shows first, each capped; then the source's own show.
+	// Diversify: other shows first, each capped; then the source's own show;
+	// then, only if still short, the nearest leftovers regardless of show.
 	perShow := map[int64]int{}
+	taken := map[int64]bool{}
 	var picked []near
 	div := Diversification{Candidates: len(cands), MaxPerShow: similarMaxPerShow}
-	for pass := 0; pass < 2 && len(picked) < limit; pass++ {
+	take := func(c near) {
+		perShow[c.podcast]++
+		taken[c.id] = true
+		picked = append(picked, c)
+		if c.podcast == srcPodcast {
+			div.SameShowShown++
+		}
+	}
+	for pass := 0; pass < 3 && len(picked) < limit; pass++ {
 		for _, c := range cands {
 			if len(picked) >= limit {
 				break
 			}
-			if (pass == 0) == (c.podcast == srcPodcast) {
+			if taken[c.id] {
 				continue
 			}
-			if perShow[c.podcast] >= similarMaxPerShow {
-				continue
+			switch pass {
+			case 0:
+				if c.podcast == srcPodcast || perShow[c.podcast] >= similarMaxPerShow {
+					continue
+				}
+			case 1:
+				if c.podcast != srcPodcast || perShow[c.podcast] >= similarMaxPerShow {
+					continue
+				}
+			case 2:
+				div.Uncapped++
 			}
-			perShow[c.podcast]++
-			picked = append(picked, c)
-			if c.podcast == srcPodcast {
-				div.SameShowShown++
-			}
+			take(c)
 		}
 	}
 	div.Dropped = len(cands) - len(picked)
