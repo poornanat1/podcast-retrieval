@@ -9,8 +9,7 @@ ENV UV_LINK_MODE=copy UV_COMPILE_BYTECODE=1 UV_PYTHON_DOWNLOADS=never \
     PYTHONUNBUFFERED=1 PYTHONPATH=/app PATH=/app/.venv/bin:$PATH
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project --only-group speech
+RUN uv sync --frozen --no-dev --no-install-project --only-group speech
 COPY ml ./ml
 RUN mkdir -p /data/hf && useradd --create-home --uid 10001 podfind && chown -R podfind /data
 USER podfind
