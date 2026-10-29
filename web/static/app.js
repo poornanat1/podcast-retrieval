@@ -238,6 +238,25 @@ $("q").addEventListener("input", () => {
   }, 150);
 });
 
+// The logo and name go home: a fresh page without a reload.
+function goHome() {
+  $("q").value = ""; $("counter").textContent = "";
+  state.queryId = ""; state.results = []; state.voice = null;
+  $("results").replaceChildren(); $("empty").hidden = true; $("understood").hidden = true; $("transcript").hidden = true;
+  $("examples").hidden = false; $("hero").classList.remove("compact");
+  setStatus(""); $("versions").textContent = "";
+  for (const id of ["language", "published"]) $(id).value = "";
+  $("duration").value = "0"; $("noexplicit").checked = false;
+  if (location.search) history.pushState({}, "", "/");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  $("q").focus();
+}
+$("brand").addEventListener("click", (e) => {
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; // open in a new tab as asked
+  e.preventDefault();
+  goHome();
+});
+
 // --- search --------------------------------------------------------------------------------
 
 const MAX_QUERY = 400; // characters; the API refuses more than 1,000 bytes
@@ -509,7 +528,7 @@ $("delete").addEventListener("click", async () => {
 
 // A shareable URL: /?q=… runs the search on load and the address bar follows
 // each search.
-window.addEventListener("popstate", () => { const q = new URLSearchParams(location.search).get("q"); if (q) { $("q").value = q; search(false); } });
+window.addEventListener("popstate", () => { const q = new URLSearchParams(location.search).get("q"); if (q) { $("q").value = q; search(false); } else goHome(); });
 {
   const q = new URLSearchParams(location.search).get("q");
   if (q) {

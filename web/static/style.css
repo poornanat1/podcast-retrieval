@@ -46,6 +46,10 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 }
 .label .link, .link { background: none; border: 0; padding: 0; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; }
 .link:hover { color: var(--ink); }
+.brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; padding: 6px 8px 6px 0; margin: -6px 0; border-radius: 6px; }
+.brand-mark { width: 22px; height: 22px; stroke-width: 2.4; }
+.brand:hover { color: var(--ink); }
+.brand:hover .brand-mark { translate: 0 -1px; }
 .display {
   font: 300 clamp(40px, 7.2vw, 88px)/0.98 var(--sans); letter-spacing: -0.04em; margin: 0; text-wrap: balance;
 }
