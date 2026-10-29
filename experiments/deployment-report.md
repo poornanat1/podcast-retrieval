@@ -112,10 +112,9 @@ Against the SLOs:
   three runs (2,110 searches).
 - **Event persistence 99.99%:** met; every accepted event was stored
   (24,659 verified in the database).
-- **Search p95 under 500 ms:** not met on the laptop (as in the serving
-  report: the vector hot set does not fit the Docker VM's cache beside
-  the lexical scans), and not met on Railway either, though much closer;
-  see below.
+- **Search p95 under 500 ms:** not met on the laptop, nor on the first
+  deployment (681 ms); met after the lexical fix (179 ms at one client,
+  359 ms at eight). See below.
 
 Event handling is cheap (p50 under 10 ms, p99 75 ms at eight clients)
 and did not affect search latency.
@@ -133,15 +132,32 @@ the proxy:
 
 These times include the round trip from the laptop, which the event
 requests put at about 50 ms (their p50). Availability and event
-persistence are met again. Search p95 is 681 ms with one client and
+persistence are met again. Search p95 was 681 ms with one client and
 915 ms with eight: better than the laptop, still above 500 ms. Within a
-search, the lexical leg hits its 300 ms limit on most queries as before,
-and the vector legs are within budget; the remaining time is the
-evidence query and the two model-server hops over the private network.
-The next levers are the ones the serving report listed (a smaller vector
-table or half-precision vectors so the hot set sits entirely in the
-buffer cache, and a lexical replica), plus running the load tester from
-inside the network to take the round trip out of the measurement.
+search, the lexical leg hit its 300 ms limit on most queries, as it had
+on the laptop.
+
+### After the lexical fix
+
+The lexical leg ranked every match with the full transcript text vector,
+which cost the whole budget on broad queries. With a small ranking
+vector over each transcript's opening, per-source ranking cut to the
+candidate depth, and a cap on matches ranked per source (commit
+`e59f1d6`, [final-report.md](final-report.md)), the same load test
+against the public URL, caches warm:
+
+| clients | duration | searches | per s | p50 ms | p95 ms | p99 ms | availability | lexical timeouts |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 1 min | 249 | 4.1 | 140 | 179 | 214 | 100% | |
+| 8 | 2 min | 2,787 | 23.2 | 166 | 359 | 1,576 | 100% | 4% (65 of 1,463 in the window) |
+
+**The 500 ms p95 budget is met**, with the internet round trip included:
+179 ms at one client and 359 ms at eight, against 681 and 915 before.
+Throughput at eight clients went from 15.6 to 23.2 searches per second
+on the same two API replicas. The first minute after the deployment
+still shows the cold-cache tail (p95 2.4 s, p99 10 s) until the API's
+start-time prewarm and the operating system's cache catch up; the
+one-client row above was measured after that.
 
 ## Exit criterion
 
@@ -151,4 +167,5 @@ inside the network to take the round trip out of the measurement.
   Grafana, to the webhook.
 - Rollback: documented as a redeploy of the previous Railway deployment
   in the dashboard; not exercised from the CLI.
-- Load-test report: this document, local and deployed numbers.
+- Load-test report: this document, local and deployed numbers, before
+  and after the lexical fix.

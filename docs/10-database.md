@@ -17,6 +17,7 @@ PostgreSQL 17 with `pgvector` is the single store. Schema lives in
 | `0010_episode_embeddings.sql` | `episode_embeddings` |
 | `0011_searches.sql` | `searches`: every served search with what produced it |
 | `0012_voice_search.sql` | `searches.input` (typed, spoken, or an edited transcript) and `voice_recordings` |
+| `0013_transcript_rank_tsv.sql` | `transcripts.rank_tsv`, the small ranking vector for the lexical leg |
 
 ## Catalog tables
 
