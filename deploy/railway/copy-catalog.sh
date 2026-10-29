@@ -21,7 +21,9 @@ BUNDLE=${BUNDLE:-data/serving/bundles/$(cat data/serving/ACTIVE)}
 models=$(uv run python - "$BUNDLE" <<'PY'
 import json, sys
 m = json.load(open(f"{sys.argv[1]}/manifest.json"))["index_models"]
-print(",".join(sorted({v for v in m.values() if v})))
+# Retrieval legs only; transcript vectors are read by id for the ranker
+# feature and need no ANN index.
+print(",".join(sorted({v for k, v in m.items() if v and k != "transcript"})))
 PY
 )
 echo "served models: $models"
@@ -46,12 +48,14 @@ copy() { # table, where-clause
 copy podcasts
 copy episodes
 copy transcripts
-copy episode_embeddings "WHERE model IN ($in_list)"
+copy episode_embeddings "WHERE model IN ($in_list) OR model LIKE '%#transcript'"
 
 echo "== HNSW indexes"
+# Serial builds: a parallel build needs the whole index in shared memory
+# (/dev/shm), which containers cap at 64 MB.
 for m in "${MODELS[@]}"; do
   name="episode_embeddings_hnsw_$(echo "$m" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/_/g')"
-  psql "$TARGET" -c "SET maintenance_work_mem = '2GB'; SET max_parallel_maintenance_workers = 4;
+  psql "$TARGET" -c "SET maintenance_work_mem = '2GB'; SET max_parallel_maintenance_workers = 0;
     CREATE INDEX IF NOT EXISTS $name ON episode_embeddings USING hnsw (embedding vector_cosine_ops) WHERE model = '$m';"
 done
 
