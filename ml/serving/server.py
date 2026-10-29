@@ -145,7 +145,7 @@ def observe_rerank(scores: np.ndarray, features: np.ndarray) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    import uvicorn
+    from ml.serving.listen import serve
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--bundle", default=os.environ.get("PODFIND_BUNDLE"))
@@ -154,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     bundle = ServingBundle.load(resolve_bundle(args.bundle))
     print(f"serving bundle {bundle.bundle_id} from {bundle.directory}", flush=True)
-    uvicorn.run(create_app(bundle), host=args.host, port=args.port, log_level="warning")
+    serve(create_app(bundle), args.host, args.port)
     return 0
 
 

@@ -84,7 +84,7 @@ def create_app(backend: stt.Transcriber) -> FastAPI:
 
 
 def main(argv: list[str] | None = None) -> int:
-    import uvicorn
+    from ml.serving.listen import serve
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backend", default=os.environ.get("PODFIND_STT", stt.DEFAULT_BACKEND))
@@ -95,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     backend = stt.load(args.backend, args.device)
     print(f"speech server: {backend.name} on {getattr(backend, 'device', 'remote')}", flush=True)
-    uvicorn.run(create_app(backend), host=args.host, port=args.port, log_level="warning")
+    serve(create_app(backend), args.host, args.port)
     return 0
 
 
