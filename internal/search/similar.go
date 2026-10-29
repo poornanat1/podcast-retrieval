@@ -85,9 +85,19 @@ func (s *Service) Similar(ctx context.Context, req SimilarRequest) (SimilarRespo
 		return SimilarResponse{}, err
 	}
 
+	var vec string
+	err = s.Pool.QueryRow(ctx, "SELECT embedding::text FROM episode_embeddings WHERE episode_id = $1 AND model = $2",
+		req.EpisodeID, model).Scan(&vec)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return SimilarResponse{}, fmt.Errorf("%w: episode has no vector in this index", ErrNotFound)
+	}
+	if err != nil {
+		return SimilarResponse{}, err
+	}
 	args := filterArgs(req.Filters)
 	args["episode_id"] = req.EpisodeID
 	args["model"] = model
+	args["qvec"] = vec
 	args["top_k"] = limit * similarOverfetch
 	t0 := time.Now()
 	rows, err := s.Pool.Query(ctx, similarSQL, args)
