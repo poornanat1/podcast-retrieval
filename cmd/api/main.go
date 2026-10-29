@@ -15,6 +15,9 @@
 //	                             reference times (parity checks only)
 //	PODFIND_LOG_FORMAT           json for one JSON object per line (the default
 //	                             on Railway), text otherwise
+//	PODFIND_PREWARM              1 reads the served vector indexes and rows into
+//	                             cache at start (pg_prewarm); for deployments
+//	                             where nothing else warms the database
 //
 // Prometheus metrics are served at /metrics (internal/metrics).
 //
@@ -122,6 +125,9 @@ func main() {
 	}
 	metrics.BuildInfo.WithLabelValues(version.String(), info.BundleID, info.FeatureVersion).Set(1)
 	go metrics.WatchIndexes(ctx, pool, info.IndexModels, 10*time.Minute)
+	if os.Getenv("PODFIND_PREWARM") == "1" {
+		go search.Prewarm(ctx, pool, info.IndexModels)
+	}
 	srv := &http.Server{
 		Addr:              env("PODFIND_API_ADDR", ":"+env("PORT", "8080")),
 		Handler:           api.New(svc, web.Static()),

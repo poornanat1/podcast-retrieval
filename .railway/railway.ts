@@ -132,6 +132,7 @@ export default defineRailway((ctx) => {
       PODFIND_LEXICAL_TIMEOUT_MS: "300",
       PODFIND_VECTOR_TIMEOUT_MS: "1500",
       PODFIND_LOG_FORMAT: "json",
+      PODFIND_PREWARM: "1", // warm the vector indexes after a database restart
       ...store(recordings, "OBJECT_STORE_BUCKET"),
     },
   });
