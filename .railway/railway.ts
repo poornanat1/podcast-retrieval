@@ -56,8 +56,9 @@ export default defineRailway((ctx) => {
   // their rows) is about 6 GB, so the buffer cache must hold it.
   const postgres = service("postgres", {
     source: image("pgvector/pgvector:pg17"),
+    // Through the image's entrypoint, which drops to the postgres user.
     start:
-      "postgres -c shared_buffers=6GB -c effective_cache_size=16GB -c work_mem=16MB " +
+      "docker-entrypoint.sh postgres -c shared_buffers=6GB -c effective_cache_size=16GB -c work_mem=16MB " +
       "-c maintenance_work_mem=2GB -c max_connections=100 -c max_parallel_workers_per_gather=2",
     env: {
       POSTGRES_USER: "podfind",
